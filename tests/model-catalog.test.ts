@@ -21,14 +21,14 @@ type MockQuery = {
   select: jest.Mock;
   eq: jest.Mock;
   order: jest.Mock;
-  single: jest.Mock<Promise<QueryResult>, []>;
-  maybeSingle: jest.Mock<Promise<QueryResult>, []>;
+  single: jest.Mock;
+  maybeSingle: jest.Mock;
 };
 type MockSupabase = { from: jest.Mock };
 
 const createSupabaseServerClientMock = jest.fn<() => Promise<MockSupabase>>();
 jest.mock('../lib/supabase/server', () => ({
-  createSupabaseServerClient: (...args: unknown[]) => createSupabaseServerClientMock(...args),
+  createSupabaseServerClient: () => createSupabaseServerClientMock(),
 }));
 
 class TestProvider implements Provider {
@@ -99,8 +99,12 @@ const providerRegistration = {
 
 function createQuery<T>(rows: T[]): MockQuery {
   let filters: Array<[string, unknown]> = [];
+
   const filteredRows = () => rows.filter((row) =>
-    filters.every(([column, value]) => (row as Record<string, unknown>)[column] === value)
+    filters.every(([column, value]) => {
+      const rowAsRecord = row as Record<string, unknown>;
+      return rowAsRecord[column] === value;
+    })
   );
 
   const query: MockQuery = {
@@ -109,9 +113,15 @@ function createQuery<T>(rows: T[]): MockQuery {
       filters = [...filters, [column, value]];
       return query;
     }),
-    order: jest.fn(async () => ({ data: filteredRows(), error: null })),
-    single: jest.fn(async () => ({ data: filteredRows()[0] ?? null, error: filteredRows().length === 1 ? null : { code: 'PGRST116' } })),
-    maybeSingle: jest.fn(async () => ({ data: filteredRows()[0] ?? null, error: null })),
+    order: jest.fn(() => ({ data: filteredRows(), error: null })),
+    single: jest.fn(() => {
+      const data = filteredRows();
+      return { data: data.length > 0 ? data[0] : null, error: data.length === 1 ? null : { code: 'PGRST116' } };
+    }),
+    maybeSingle: jest.fn(() => {
+      const data = filteredRows();
+      return { data: data.length > 0 ? data[0] : null, error: null };
+    }),
   };
 
   return query;
