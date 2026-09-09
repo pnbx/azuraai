@@ -32,12 +32,14 @@ const PUBLIC_ROUTES = [
 // Routes that require authentication (checked via middleware + server auth helpers)
 const PROTECTED_ROUTES = [
   '/dashboard',
+  '/admin',
   '/api/wallet',
   '/api/api-keys',
   '/api/models',
   '/api/usage',
   '/api/user',
   '/api/payments',
+  '/api/admin',
 ]
 
 // Static asset and Next.js internal paths that should never be protected
@@ -92,8 +94,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // If no valid session and trying to access protected routes, redirect to login
-  if (!session && pathname.startsWith('/dashboard')) {
-    // Strip any existing redirect from URL to avoid loop
+  if (!session && (pathname.startsWith('/dashboard') || pathname.startsWith('/admin'))) {
     const redirectUrl = new URL('/auth/login', request.url)
     return NextResponse.redirect(redirectUrl)
   }
