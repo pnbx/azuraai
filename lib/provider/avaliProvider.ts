@@ -19,7 +19,7 @@
  * missing external API details are provided.
  */
 
-import { Provider, ProviderId, ProviderRequest, ProviderResponse, ProviderError, ProviderConfig } from "./types";
+import { Provider, ProviderRequest, ProviderResponse, ProviderError, ProviderConfig } from "./types";
 import type { ProviderOperation } from "./types";
 
 /**
@@ -84,9 +84,11 @@ export class AvalAIProvider implements Provider {
 export function createAvalAIProvider(): AvalAIProvider {
   // Check if AVALAI_API_KEY exists in environment
   // NOTE: The exact env variable name should match project conventions.
-  // Currently we cannot verify the external API contract, so the provider
-  // is created in a disabled state.
-  const isEnabled = process.env.AVALAI_API_KEY !== undefined && process.env.AVALAI_API_KEY !== "";
+  // The provider is only enabled when BOTH an API key exists AND the external
+  // API contract has been verified (no missing requirements).
+  const apiKeyExists = process.env.AVALAI_API_KEY !== undefined && process.env.AVALAI_API_KEY !== "";
+  const contractVerified = verifyAvalAIContract().length === 0;
+  const isEnabled = apiKeyExists && contractVerified;
 
   const config: ProviderConfig = {
     ...avalaiDefaultConfig,

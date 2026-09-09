@@ -16,7 +16,6 @@ import {
 } from '../lib/provider/model-catalog';
 import { registerProvider } from '../lib/provider/registry';
 
-type QueryResult = { data: unknown; error: { code?: string; message?: string } | null };
 type MockQuery = {
   select: jest.Mock;
   eq: jest.Mock;
