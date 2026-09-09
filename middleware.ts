@@ -34,6 +34,7 @@ const PROTECTED_ROUTES = [
   '/dashboard',
   '/api/wallet',
   '/api/api-keys',
+  '/api/payments',
 ]
 
 // Static asset and Next.js internal paths that should never be protected
@@ -51,6 +52,7 @@ const PUBLIC_API_ROUTES = [
   '/api/auth/register',
   '/api/auth/callback',
   '/api/auth/signout',
+  '/api/payments/webhook',
 ]
 
 export async function middleware(request: NextRequest) {

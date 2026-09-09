@@ -1,7 +1,7 @@
 /**
  * Wallet / Ledger Operations
  *
- * - All monetary values are integer BIGINT (smallest currency unit, e.g., cents/USD)
+ * - All monetary values are integer BIGINT (Toman, 1 Toman = 10 IRR)
  * - Uses server-side admin client (bypasses RLS) for atomic transactions
  * - Every mutation creates an immutable wallet_transactions row
  * - Prevents negative balances
@@ -66,7 +66,7 @@ async function createInitialBalance(userId: string): Promise<{
   const { data, error } = await supabaseAdmin
     .from('balances')
     .upsert(
-      { user_id: userId, balance_cents: 0, currency: 'USD' },
+      { user_id: userId, balance_cents: 0, currency: 'TOMAN' },
       { onConflict: 'user_id' }
     )
     .select('balance_cents, currency, updated_at')
