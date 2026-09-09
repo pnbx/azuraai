@@ -34,6 +34,9 @@ const PROTECTED_ROUTES = [
   '/dashboard',
   '/api/wallet',
   '/api/api-keys',
+  '/api/models',
+  '/api/usage',
+  '/api/user',
   '/api/payments',
 ]
 
