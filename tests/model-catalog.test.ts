@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import type { Provider, ProviderConfig, ProviderOperation, ProviderRequest, ProviderResponse } from '../lib/provider/types';
+import type {
+  Provider,
+  ProviderConfig,
+  ProviderOperation,
+  ProviderRequest,
+  ProviderResponse,
+} from '../lib/provider/types';
 import {
   getModelsByProvider,
   getModelBySlug,
@@ -10,23 +16,30 @@ import {
 } from '../lib/provider/model-catalog';
 import { registerProvider } from '../lib/provider/registry';
 
-type MockSupabase = ReturnType<typeof createSupabase>;
+type QueryResult = { data: unknown; error: { code?: string; message?: string } | null };
+type MockQuery = {
+  select: jest.Mock;
+  eq: jest.Mock;
+  order: jest.Mock;
+  single: jest.Mock<Promise<QueryResult>, []>;
+  maybeSingle: jest.Mock<Promise<QueryResult>, []>;
+};
+type MockSupabase = { from: jest.Mock };
+
 const createSupabaseServerClientMock = jest.fn<() => Promise<MockSupabase>>();
 jest.mock('../lib/supabase/server', () => ({
   createSupabaseServerClient: (...args: unknown[]) => createSupabaseServerClientMock(...args),
 }));
 
 class TestProvider implements Provider {
-  readonly config: ProviderConfig = {
-    id: 'avali',
-    name: 'Test Provider',
-    defaultModel: 'test-model',
-    capabilities: ['generate'] as ProviderOperation[],
-    enabled: true,
-  };
+  readonly config: ProviderConfig;
+
+  constructor(config: ProviderConfig) {
+    this.config = config;
+  }
 
   canHandle(operation: ProviderOperation): boolean {
-    return operation === 'generate';
+    return this.config.capabilities.includes(operation);
   }
 
   async execute(_request: ProviderRequest): Promise<ProviderResponse> {
@@ -54,10 +67,22 @@ const disabledModel = {
   enabled: false,
 };
 
+const deprecatedModel = {
+  ...enabledModel,
+  public_slug: 'deprecated-model',
+  status: 'deprecated',
+};
+
 const suspendedModel = {
   ...enabledModel,
   public_slug: 'suspended-model',
   status: 'suspended',
+};
+
+const objectCapabilityModel = {
+  ...enabledModel,
+  public_slug: 'object-capability-model',
+  capabilities: { generate: true, chat: false },
 };
 
 const providerRegistration = {
@@ -72,27 +97,36 @@ const providerRegistration = {
   }),
 };
 
-function createQuery<T>(rows: T[]) {
-  return {
+function createQuery<T>(rows: T[]): MockQuery {
+  let filters: Array<[string, unknown]> = [];
+  const filteredRows = () => rows.filter((row) =>
+    filters.every(([column, value]) => (row as Record<string, unknown>)[column] === value)
+  );
+
+  const query: MockQuery = {
     select: jest.fn().mockReturnThis(),
-    eq: jest.fn().mockReturnThis(),
-    order: jest.fn().mockReturnThis(),
-    single: jest.fn().mockResolvedValue({ data: rows[0] ?? null, error: null }),
-    maybeSingle: jest.fn().mockResolvedValue({ data: rows[0] ?? null, error: null }),
+    eq: jest.fn((column: string, value: unknown) => {
+      filters = [...filters, [column, value]];
+      return query;
+    }),
+    order: jest.fn(async () => ({ data: filteredRows(), error: null })),
+    single: jest.fn(async () => ({ data: filteredRows()[0] ?? null, error: filteredRows().length === 1 ? null : { code: 'PGRST116' } })),
+    maybeSingle: jest.fn(async () => ({ data: filteredRows()[0] ?? null, error: null })),
   };
+
+  return query;
 }
 
-function createSupabase(modelRows: unknown[], providerRows: unknown[] = [{ id: enabledModel.provider_id, provider_registry_id: 'avali' }]): MockSupabase {
+function createSupabase(
+  modelRows: unknown[],
+  providerRows: unknown[] = [{ id: enabledModel.provider_id, provider_registry_id: 'avali' }]
+): MockSupabase {
   const modelQuery = createQuery(modelRows);
   const providerQuery = createQuery(providerRows);
+
   return {
-    from: jest.fn((table: string) => {
-      if (table === 'providers') {
-        return providerQuery;
-      }
-      return modelQuery;
-    }) as unknown as MockSupabase['from'],
-  } as MockSupabase;
+    from: jest.fn((table: string) => table === 'providers' ? providerQuery : modelQuery),
+  };
 }
 
 beforeEach(() => {
@@ -106,132 +140,138 @@ afterEach(() => {
 });
 
 describe('Model Catalog - getModelBySlug', () => {
-  it('looks up a model by public slug', async () => {
+  it('looks up a model by public slug and requires active/enabled state', async () => {
     const result = await getModelBySlug('test-model');
 
     expect(result).toEqual(enabledModel);
     expect(createSupabaseServerClientMock).toHaveBeenCalledTimes(1);
-    const mockSupabase = createSupabaseServerClientMock().mock.results[0].value;
-    expect(mockSupabase.from).toHaveBeenCalledWith('model_catalog');
-    expect(mockSupabase.from('model_catalog').eq).toHaveBeenCalledWith('public_slug', 'test-model');
-    expect(mockSupabase.from('model_catalog').eq).toHaveBeenCalledWith('enabled', true);
-    expect(mockSupabase.from('model_catalog').eq).toHaveBeenCalledWith('status', 'active');
   });
 
   it('returns null for unknown slug', async () => {
     createSupabaseServerClientMock.mockResolvedValue(createSupabase([]));
-    const result = await getModelBySlug('unknown-model');
-
-    expect(result).toBeNull();
+    await expect(getModelBySlug('unknown-model')).resolves.toBeNull();
   });
 
   it('filters disabled models', async () => {
     createSupabaseServerClientMock.mockResolvedValue(createSupabase([disabledModel]));
-    const result = await getModelBySlug('disabled-model');
-
-    expect(result).toBeNull();
+    await expect(getModelBySlug('disabled-model')).resolves.toBeNull();
   });
 
-  it('filters suspended models', async () => {
-    createSupabaseServerClientMock.mockResolvedValue(createSupabase([suspendedModel]));
-    const result = await getModelBySlug('suspended-model');
+  it('filters deprecated and suspended models', async () => {
+    createSupabaseServerClientMock.mockResolvedValue(createSupabase([deprecatedModel]));
+    await expect(getModelBySlug('deprecated-model')).resolves.toBeNull();
 
-    expect(result).toBeNull();
+    createSupabaseServerClientMock.mockResolvedValue(createSupabase([suspendedModel]));
+    await expect(getModelBySlug('suspended-model')).resolves.toBeNull();
   });
 });
 
 describe('Model Catalog - listEnabledModels', () => {
-  it('lists enabled models', async () => {
-    createSupabaseServerClientMock.mockResolvedValue(createSupabase([enabledModel, disabledModel, suspendedModel]));
-    const result = await listEnabledModels();
+  it('returns only active and enabled models', async () => {
+    createSupabaseServerClientMock.mockResolvedValue(
+      createSupabase([enabledModel, disabledModel, deprecatedModel, suspendedModel])
+    );
 
-    expect(result).toEqual([enabledModel]);
+    await expect(listEnabledModels()).resolves.toEqual([enabledModel]);
   });
 });
 
 describe('Model Catalog - resolveModel', () => {
-  it('resolves model to provider and config', async () => {
+  it('resolves a database provider UUID through the explicit registry bridge', async () => {
     const result = await resolveModel('test-model');
 
     expect(result).toEqual({
       model: enabledModel,
       provider: expect.any(TestProvider),
-      providerConfig: expect.objectContaining({
-        id: 'avali',
-        name: 'Test Provider',
-      }),
+      providerConfig: expect.objectContaining({ id: 'avali', name: 'Test Provider' }),
     });
   });
 
   it('throws for unknown model', async () => {
     createSupabaseServerClientMock.mockResolvedValue(createSupabase([]));
-    await expect(resolveModel('unknown-model')).rejects.toThrow('Model not found');
+    await expect(resolveModel('unknown-model')).rejects.toMatchObject({
+      type: 'not_found',
+      providerErrorId: 'model_not_found',
+    });
   });
 
-  it('rejects invalid provider mappings', async () => {
-    createSupabaseServerClientMock.mockResolvedValue(createSupabase([enabledModel], [{ id: enabledModel.provider_id, provider_registry_id: null }]));
-    await expect(resolveModel('test-model')).rejects.toThrow('Provider registry mapping is missing');
+  it('rejects missing provider mappings', async () => {
+    createSupabaseServerClientMock.mockResolvedValue(
+      createSupabase([enabledModel], [{ id: enabledModel.provider_id, provider_registry_id: null }])
+    );
+    await expect(resolveModel('test-model')).rejects.toMatchObject({
+      type: 'provider_unavailable',
+      providerErrorId: 'provider_not_registered',
+    });
   });
 
   it('rejects unregistered provider mappings', async () => {
-    createSupabaseServerClientMock.mockResolvedValue(createSupabase([enabledModel], [{ id: enabledModel.provider_id, provider_registry_id: 'unknown' }]));
+    createSupabaseServerClientMock.mockResolvedValue(
+      createSupabase([enabledModel], [{ id: enabledModel.provider_id, provider_registry_id: 'unknown' }])
+    );
     await expect(resolveModel('test-model')).rejects.toThrow('Provider not registered: unknown');
   });
 });
 
 describe('Model Catalog - modelSupportsOperation', () => {
-  it('returns true when model supports operation', async () => {
-    createSupabaseServerClientMock.mockResolvedValue(createSupabase([enabledModel]));
-    const result = await modelSupportsOperation('test-model', 'generate');
-
-    expect(result).toBe(true);
+  it('returns true for an array capability', async () => {
+    await expect(modelSupportsOperation('test-model', 'generate')).resolves.toBe(true);
   });
 
-  it('returns false when model does not support operation', async () => {
+  it('returns false when the model does not support an operation', async () => {
+    await expect(modelSupportsOperation('test-model', 'chat')).resolves.toBe(false);
+  });
+
+  it('supports object-style capability records', async () => {
+    createSupabaseServerClientMock.mockResolvedValue(createSupabase([objectCapabilityModel]));
+    await expect(modelSupportsOperation('object-capability-model', 'generate')).resolves.toBe(true);
+    await expect(modelSupportsOperation('object-capability-model', 'chat')).resolves.toBe(false);
+  });
+
+  it('returns false for unavailable or unknown models', async () => {
     createSupabaseServerClientMock.mockResolvedValue(createSupabase([disabledModel]));
-    const result = await modelSupportsOperation('disabled-model', 'generate');
+    await expect(modelSupportsOperation('disabled-model', 'generate')).resolves.toBe(false);
 
-    expect(result).toBe(false);
-  });
-
-  it('returns false for unknown model', async () => {
     createSupabaseServerClientMock.mockResolvedValue(createSupabase([]));
-    const result = await modelSupportsOperation('unknown-model', 'generate');
-
-    expect(result).toBe(false);
+    await expect(modelSupportsOperation('unknown-model', 'generate')).resolves.toBe(false);
   });
 });
 
 describe('Model Catalog - getModelsByProvider', () => {
-  it('gets models by provider', async () => {
-    const result = await getModelsByProvider('avali');
-
-    expect(result).toEqual([enabledModel]);
+  it('gets active/enabled models through the provider bridge', async () => {
+    await expect(getModelsByProvider('avali')).resolves.toEqual([enabledModel]);
   });
 
-  it('filters by provider ID', async () => {
-    const rows = [
-      enabledModel,
-      { ...enabledModel, provider_id: '33333333-3333-4333-8333-333333333333' },
-    ];
-    createSupabaseServerClientMock.mockResolvedValue(createSupabase(rows));
-    const result = await getModelsByProvider('avali');
+  it('filters models by database provider UUID', async () => {
+    const otherProviderModel = {
+      ...enabledModel,
+      id: '44444444-4444-4444-8444-444444444444',
+      provider_id: '33333333-3333-4333-8333-333333333333',
+      public_slug: 'other-provider-model',
+    };
+    createSupabaseServerClientMock.mockResolvedValue(
+      createSupabase([enabledModel, otherProviderModel])
+    );
 
-    expect(result).toEqual([enabledModel]);
+    await expect(getModelsByProvider('avali')).resolves.toEqual([enabledModel]);
+  });
+
+  it('fails safely when the provider bridge row is missing', async () => {
+    createSupabaseServerClientMock.mockResolvedValue(createSupabase([enabledModel], []));
+    await expect(getModelsByProvider('avali')).rejects.toMatchObject({
+      type: 'provider_unavailable',
+      providerErrorId: 'provider_not_registered',
+    });
   });
 });
 
 describe('Model Catalog - healthCheck', () => {
-  it('returns true when catalog accessible', async () => {
-    const result = await healthCheck();
-
-    expect(result).toBe(true);
+  it('returns true when catalog access succeeds', async () => {
+    await expect(healthCheck()).resolves.toBe(true);
   });
 
   it('returns false when catalog access fails', async () => {
     createSupabaseServerClientMock.mockRejectedValue(new Error('Database connection failed'));
-    const result = await healthCheck();
-
-    expect(result).toBe(false);
+    await expect(healthCheck()).resolves.toBe(false);
   });
 });
