@@ -30,7 +30,14 @@ function validateRedirectUrl(redirectUrl: string | null): string {
 }
 
 export async function POST(request: Request) {
-  const { email, password, redirectUrl } = await request.json()
+  let body: Record<string, unknown>
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+
+  const { email, password, redirectUrl } = body as { email?: string; password?: string; redirectUrl?: string }
 
   if (!email || !password) {
     return NextResponse.json(
@@ -50,7 +57,7 @@ export async function POST(request: Request) {
   }
 
   // Use the validated redirectUrl from request or default to dashboard
-  const redirectTo = validateRedirectUrl(redirectUrl)
+  const redirectTo = validateRedirectUrl(redirectUrl ?? null)
 
   return NextResponse.json({
     success: true,

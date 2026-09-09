@@ -39,6 +39,7 @@ const PROTECTED_ROUTES = [
   '/api/user',
   '/api/payments',
   '/api/admin',
+  '/api/provider',
 ]
 
 // Static asset and Next.js internal paths that should never be protected

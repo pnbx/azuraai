@@ -107,6 +107,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     return invalidRequest('Model is required and must be a string')
   }
 
+  if (body.model.length > 256) {
+    return invalidRequest('Model name must not exceed 256 characters')
+  }
+
   if (typeof body.operation !== 'string' || body.operation.trim().length === 0) {
     return invalidRequest('Operation is required and must be a string')
   }
@@ -190,7 +194,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   if (pricing) {
     const estimatedCost = Math.ceil(
-      estimateReservationCost(pricing, ESTIMATED_INPUT_TOKENS) * (1 + MARGIN_PERCENT / 100),
+      estimateReservationCost(pricing, ESTIMATED_INPUT_TOKENS) * (100 + MARGIN_PERCENT) / 100,
     )
 
     if (keyId) {
@@ -243,7 +247,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       await releaseReservation(reservationId)
     }
 
-    const status = isProviderError && error.type === 'provider_unavailable' ? 502 : 502
+    const status = 502
     return jsonError(
       isProviderError ? error.message : 'Upstream provider error',
       status,

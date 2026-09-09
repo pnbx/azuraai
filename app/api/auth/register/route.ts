@@ -30,7 +30,14 @@ function validateRedirectUrl(redirectUrl: string | null): string {
 }
 
 export async function POST(request: Request) {
-  const { email, password, fullName, redirectUrl } = await request.json()
+  let body: Record<string, unknown>
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
+
+  const { email, password, fullName, redirectUrl } = body as { email?: string; password?: string; fullName?: string; redirectUrl?: string }
 
   if (!email || !password) {
     return NextResponse.json(
@@ -47,7 +54,7 @@ export async function POST(request: Request) {
   }
 
   const supa = createSupabaseBrowserClient()
-  const validatedRedirectUrl = validateRedirectUrl(redirectUrl)
+  const validatedRedirectUrl = validateRedirectUrl(redirectUrl ?? null)
   const { data, error } = await supa.auth.signUp({
     email,
     password,

@@ -48,6 +48,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     .select('input_tokens, output_tokens, azura_customer_charge_cents, status')
     .eq('user_id', userId)
     .gte('request_ts', since.toISOString())
+    .limit(10000)
 
   if (aggError) {
     return NextResponse.json(
@@ -70,6 +71,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     .select('azura_model_id, input_tokens, output_tokens, azura_customer_charge_cents')
     .eq('user_id', userId)
     .gte('request_ts', since.toISOString())
+    .limit(10000)
 
   const modelMap = new Map<string, { requests: number; tokens: number; cost: number }>()
   for (const row of byModelRows ?? []) {
