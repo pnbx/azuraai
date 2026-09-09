@@ -1,154 +1,315 @@
 /**
- * Phase 6 Inference API
+ * Phase 10 Inference API — Full enforcement pipeline
  *
- * Internal inference endpoint that routes authenticated requests
- * through the Model Catalog and Provider Gateway.
+ * 14-step execution path:
+ *   1.  Parse request body
+ *   2.  Authenticate API key (or fall back to session auth)
+ *   3.  Verify key is active (not revoked, not expired)
+ *   4.  Verify user account is active
+ *   5.  Resolve model via model_catalog
+ *   6.  Resolve provider
+ *   7.  Resolve authoritative pricing
+ *   8.  Enforce rate limits
+ *   9.  Enforce token quota
+ *  10.  Reserve funds atomically
+ *  11.  Call provider via gateway
+ *  12.  Extract authoritative token usage from response
+ *  13.  Settle reservation (refund surplus / debit overage)
+ *  14.  Record usage idempotently, return response
  *
- * Security:
- * - Requires authenticated user (via requireServerUser)
- * - Resolves model via model_catalog (status=active, enabled=true)
- * - Maps database UUID to ProviderId via explicit provider_registry_id bridge
- * - Provider credentials remain server-side only
- * - No public inference API — authenticated only
+ * Auth:
+ *   - Primary:   Authorization: Bearer az_xxx (API key)
+ *   - Fallback:  Supabase session cookie (backward compat)
  *
- * Request:
- *   POST /api/inference
- *   {
- *     "provider": "avali" | null,       // optional; defaults to config default
- *     "model": "public_slug",          // model catalog public_slug
- *     "operation": "generate",         // ProviderOperation
- *     "input": any,                    // provider-specific input
- *     "parameters": {}                 // optional provider parameters
- *   }
- *
- * Response:
- *   200 — { success: true, result: ProviderResponse, model: ModelCatalog }
- *   401 — Unauthenticated
- *   403 — Model not found/inactive/disabled, provider unavailable
- *   400 — Missing required fields
+ * Response codes:
+ *   200 — success
+ *   400 — bad request / missing fields
+ *   401 — unauthenticated
+ *   402 — insufficient balance
+ *   403 — model not found / unavailable
+ *   409 — duplicate request (idempotency)
+ *   429 — rate limited / quota exceeded
+ *   502 — upstream provider error
+ *   500 — internal error
  */
 
 import { NextResponse } from 'next/server'
 import { requireServerUser } from '@/lib/auth/server'
-import { resolveModel, modelSupportsOperation } from '@/lib/provider/model-catalog';
+import { resolveModel } from '@/lib/provider/model-catalog'
 import {
   ProviderError,
   ProviderOperation,
   ProviderRequest,
-} from '@/lib/provider/types';
-import { executeThroughGateway } from '@/lib/gateway/gateway';
+} from '@/lib/provider/types'
+import { executeThroughGateway } from '@/lib/gateway/gateway'
+import { authenticateApiKey, touchKeyLastUsed } from '@/lib/security/auth'
+import { checkRateLimit, checkTokenQuota } from '@/lib/security/rate-limit'
+import { reserveFunds, settleReservation, releaseReservation } from '@/lib/security/reservation'
+import {
+  resolvePricing,
+  estimateReservationCost,
+  calculateActualCost,
+  recordUsage,
+  extractTokenUsage,
+} from '@/lib/security/usage'
 
-const operationNames = new Set<ProviderOperation>([
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const RATE_LIMIT_MAX_REQUESTS = 60
+const RATE_LIMIT_PERIOD_SECONDS = 60
+const MAX_TOKENS_PER_MONTH = 100_000_000 // 100M tokens/month default quota
+const ESTIMATED_INPUT_TOKENS = 1000      // for pre-call reservation estimate
+const MARGIN_PERCENT = 0                 // reserved = estimated * (1 + margin%)
+
+const VALID_OPERATIONS = new Set<ProviderOperation>([
   'generate',
   'generate-image',
   'transcribe',
   'embed',
   'chat',
   'stream',
-]);
+])
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function invalidRequest(message: string) {
-  return NextResponse.json({ success: false, error: message }, { status: 400 });
+  return NextResponse.json({ success: false, error: message }, { status: 400 })
 }
 
-function safeError(error: unknown): string {
-  return error instanceof ProviderError ? error.message : 'Model resolution failed';
+function jsonError(message: string, status: number) {
+  return NextResponse.json({ success: false, error: message }, { status })
 }
+
+// ─── POST handler ────────────────────────────────────────────────────────────
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const startTime = Date.now()
+  let keyId: string | null = null
+  let userId: string | null = null
+
+  // ── Step 1: Parse body ─────────────────────────────────────────────────────
+  let body: Record<string, unknown>
   try {
-    await requireServerUser();
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Unauthenticated' },
-      { status: 401 }
-    );
+    body = await request.json()
+  } catch {
+    return invalidRequest('Invalid JSON body')
   }
 
-  try {
-    const body: unknown = await request.json();
-    if (!isObject(body)) {
-      return invalidRequest('Request body must be an object');
-    }
+  if (!isObject(body)) {
+    return invalidRequest('Request body must be an object')
+  }
 
-    if (typeof body.model !== 'string' || body.model.trim().length === 0) {
-      return invalidRequest('Model is required and must be a string');
-    }
+  if (typeof body.model !== 'string' || body.model.trim().length === 0) {
+    return invalidRequest('Model is required and must be a string')
+  }
 
-    if (typeof body.operation !== 'string' || body.operation.trim().length === 0) {
-      return invalidRequest('Operation is required and must be a string');
-    }
+  if (typeof body.operation !== 'string' || body.operation.trim().length === 0) {
+    return invalidRequest('Operation is required and must be a string')
+  }
 
-    if (!operationNames.has(body.operation.trim() as ProviderOperation)) {
-      return invalidRequest('Operation is not supported');
-    }
+  const operation = body.operation.trim() as ProviderOperation
+  if (!VALID_OPERATIONS.has(operation)) {
+    return invalidRequest('Operation is not supported')
+  }
 
-    if (body.parameters !== undefined && !isObject(body.parameters)) {
-      return invalidRequest('Parameters must be an object');
-    }
+  if (body.parameters !== undefined && !isObject(body.parameters)) {
+    return invalidRequest('Parameters must be an object')
+  }
 
-    const modelSlug = body.model.trim();
-    const operation = body.operation as ProviderOperation;
+  const modelSlug = body.model.trim()
+  const requestId = crypto.randomUUID()
 
-    let resolved;
+  // ── Step 2: Authenticate ───────────────────────────────────────────────────
+  const authHeader = request.headers.get('Authorization')
+  const apiKeyAuth = await authenticateApiKey(authHeader)
+
+  if (apiKeyAuth) {
+    // API key auth (primary)
+    keyId = apiKeyAuth.keyId
+    userId = apiKeyAuth.userId
+  } else {
+    // Session auth fallback
     try {
-      resolved = await resolveModel(modelSlug);
-    } catch (error) {
-      return NextResponse.json(
-        { success: false, error: safeError(error) },
-        { status: 403 }
-      );
+      const user = await requireServerUser()
+      userId = user.id
+    } catch {
+      return jsonError('Unauthenticated — provide an API key or session', 401)
     }
-
-    if (!(await modelSupportsOperation(modelSlug, operation))) {
-      return invalidRequest(`Model '${modelSlug}' does not support operation '${operation}'`);
-    }
-
-    const providerRequest: ProviderRequest = {
-      provider: resolved.provider.config.id,
-      model: resolved.model.provider_model_id,
-      input: body.input ?? {},
-      operation,
-      parameters: body.parameters ?? {},
-      requestId: crypto.randomUUID(),
-    };
-
-    const gatewayResponse = await executeThroughGateway(providerRequest);
-
-    return NextResponse.json(
-      {
-        success: true,
-        result: gatewayResponse.providerResponse,
-        model: {
-          id: resolved.model.id,
-          azura_model_id: resolved.model.azura_model_id,
-          public_slug: resolved.model.public_slug,
-          display_name: resolved.model.display_name,
-          provider_id: resolved.model.provider_id,
-          provider_model_id: resolved.model.provider_model_id,
-          capabilities: resolved.model.capabilities,
-          enabled: resolved.model.enabled,
-          status: resolved.model.status,
-          created_at: resolved.model.created_at,
-          updated_at: resolved.model.updated_at,
-        },
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    if (error instanceof ProviderError) {
-      const status = error.type === 'invalid_request' ? 400 : 403;
-      return NextResponse.json({ success: false, error: error.message }, { status });
-    }
-
-    console.error('[Inference API] Unexpected error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    );
   }
+
+  if (!userId) {
+    return jsonError('Unauthenticated', 401)
+  }
+
+  // ── Steps 3–4: Key & user status verified by authenticateApiKey ────────────
+  // (revoked_at, expires_at, is_active checks happen inside authenticateApiKey)
+  // For session auth, user is already verified by requireServerUser.
+
+  // ── Step 5: Resolve model ──────────────────────────────────────────────────
+  let resolved
+  try {
+    resolved = await resolveModel(modelSlug)
+  } catch (error) {
+    return jsonError(
+      error instanceof ProviderError ? error.message : 'Model resolution failed',
+      403,
+    )
+  }
+
+  // ── Step 6: Resolve provider (already part of resolveModel) ────────────────
+  // resolved.provider and resolved.providerConfig are available.
+
+  // ── Step 7: Resolve pricing ────────────────────────────────────────────────
+  const pricing = await resolvePricing(resolved.model.id)
+
+  // ── Step 8: Enforce rate limits ────────────────────────────────────────────
+  if (keyId) {
+    const rateLimit = await checkRateLimit(
+      keyId,
+      RATE_LIMIT_PERIOD_SECONDS,
+      RATE_LIMIT_MAX_REQUESTS,
+    )
+
+    if (!rateLimit.allowed) {
+      return jsonError('Rate limit exceeded', 429)
+    }
+  }
+
+  // ── Step 9: Enforce token quota ────────────────────────────────────────────
+  const quota = await checkTokenQuota(userId, MAX_TOKENS_PER_MONTH)
+  if (!quota.allowed) {
+    return jsonError('Monthly token quota exceeded', 429)
+  }
+
+  // ── Step 10: Reserve funds ─────────────────────────────────────────────────
+  let reservationId: string | null = null
+
+  if (pricing) {
+    const estimatedCost = Math.ceil(
+      estimateReservationCost(pricing, ESTIMATED_INPUT_TOKENS) * (1 + MARGIN_PERCENT / 100),
+    )
+
+    if (keyId) {
+      const reserveResult = await reserveFunds(userId, keyId, requestId, estimatedCost)
+
+      if (!reserveResult.success) {
+        return jsonError('Insufficient wallet balance', 402)
+      }
+
+      reservationId = reserveResult.reservationId
+    }
+  }
+
+  // ── Step 11: Call provider ─────────────────────────────────────────────────
+  const providerRequest: ProviderRequest = {
+    provider: resolved.provider.config.id,
+    model: resolved.model.provider_model_id,
+    input: body.input ?? {},
+    operation,
+    parameters: body.parameters ?? {},
+    userId,
+    requestId,
+  }
+
+  let gatewayResponse
+  try {
+    gatewayResponse = await executeThroughGateway(providerRequest)
+  } catch (error) {
+    const isProviderError = error instanceof ProviderError
+
+    // Record failed usage
+    await recordUsage({
+      requestId,
+      userId,
+      provider: resolved.provider.config.id,
+      upstreamModelId: resolved.model.provider_model_id,
+      azuraModelId: resolved.model.azura_model_id,
+      tokens: { inputTokens: 0, outputTokens: 0 },
+      upstreamCost: 0,
+      markup: 0,
+      customerCharge: 0,
+      pricingRuleVersion: pricing?.ruleVersion ?? 0,
+      status: 'failed',
+      statusDetail: isProviderError ? error.message : 'Provider call failed',
+      responseMs: Date.now() - startTime,
+    })
+
+    // Release reservation
+    if (reservationId) {
+      await releaseReservation(reservationId)
+    }
+
+    const status = isProviderError && error.type === 'provider_unavailable' ? 502 : 502
+    return jsonError(
+      isProviderError ? error.message : 'Upstream provider error',
+      status,
+    )
+  }
+
+  // ── Step 12: Extract token usage ───────────────────────────────────────────
+  const tokens = extractTokenUsage(
+    gatewayResponse.providerResponse.metadata as Record<string, unknown> | undefined,
+  )
+
+  // ── Step 13: Settle reservation ────────────────────────────────────────────
+  if (pricing && reservationId) {
+    const actualCost = calculateActualCost(pricing, tokens)
+    await settleReservation(reservationId, actualCost, tokens.inputTokens, tokens.outputTokens)
+  } else if (reservationId) {
+    // No pricing — release the full reservation
+    await releaseReservation(reservationId)
+  }
+
+  // ── Step 14: Record usage & update key ─────────────────────────────────────
+  if (pricing) {
+    const actualCost = calculateActualCost(pricing, tokens)
+    await recordUsage({
+      requestId,
+      userId,
+      provider: resolved.provider.config.id,
+      upstreamModelId: resolved.model.provider_model_id,
+      azuraModelId: resolved.model.azura_model_id,
+      tokens,
+      upstreamCost: actualCost,
+      markup: 0,
+      customerCharge: actualCost,
+      pricingRuleVersion: pricing.ruleVersion,
+      status: 'succeeded',
+      responseMs: Date.now() - startTime,
+    })
+  }
+
+  if (keyId) {
+    await touchKeyLastUsed(keyId)
+  }
+
+  return NextResponse.json(
+    {
+      success: true,
+      result: gatewayResponse.providerResponse,
+      model: {
+        id: resolved.model.id,
+        azura_model_id: resolved.model.azura_model_id,
+        public_slug: resolved.model.public_slug,
+        display_name: resolved.model.display_name,
+        provider_id: resolved.model.provider_id,
+        provider_model_id: resolved.model.provider_model_id,
+        capabilities: resolved.model.capabilities,
+        enabled: resolved.model.enabled,
+        status: resolved.model.status,
+        created_at: resolved.model.created_at,
+        updated_at: resolved.model.updated_at,
+      },
+      usage: {
+        input_tokens: tokens.inputTokens,
+        output_tokens: tokens.outputTokens,
+        cached_tokens: tokens.cachedTokens ?? 0,
+      },
+    },
+    { status: 200 },
+  )
 }

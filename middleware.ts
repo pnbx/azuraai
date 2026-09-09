@@ -36,7 +36,6 @@ const PROTECTED_ROUTES = [
   '/api/wallet',
   '/api/api-keys',
   '/api/models',
-  '/api/usage',
   '/api/user',
   '/api/payments',
   '/api/admin',
@@ -58,6 +57,8 @@ const PUBLIC_API_ROUTES = [
   '/api/auth/callback',
   '/api/auth/signout',
   '/api/payments/webhook',
+  '/api/inference',   // self-authenticating (API key or session)
+  '/api/usage',       // self-authenticating (API key or session)
 ]
 
 export async function middleware(request: NextRequest) {
