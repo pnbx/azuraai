@@ -41,7 +41,7 @@ export function initializeProviders(): void {
 
   // Log initialization
   const registered = listProviders();
-  console.log(
+  console.warn(
     `[ProviderRegistry] Initialized providers: ${registered.join(", ")}`
   );
 }

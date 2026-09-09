@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createSupabaseBrowserClient } from '@/lib/supabase'
+import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 /**
  * Validates a redirect URL to prevent open redirects and ensure safety
@@ -30,38 +30,51 @@ function validateRedirectUrl(redirectUrl: string | null): string {
 }
 
 export async function POST(request: Request) {
-  let body: Record<string, unknown>
   try {
-    body = await request.json()
+    let body: Record<string, unknown>
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'Invalid request body' },
+        { status: 400 }
+      )
+    }
+
+    const { email, password, redirectUrl } = body as { email?: string; password?: string; redirectUrl?: string }
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { success: false, error: 'Email and password are required' },
+        { status: 400 }
+      )
+    }
+
+    const supa = await createSupabaseServerClient()
+    const { error } = await supa.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid email or password' },
+        { status: 401 }
+      )
+    }
+
+    // Session cookie is set automatically by the server client.
+    // Do NOT return session tokens or full user object to the client.
+    const redirectTo = validateRedirectUrl(redirectUrl ?? null)
+
+    return NextResponse.json({
+      success: true,
+      redirectTo,
+    })
   } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
-  }
-
-  const { email, password, redirectUrl } = body as { email?: string; password?: string; redirectUrl?: string }
-
-  if (!email || !password) {
     return NextResponse.json(
-      { error: 'Email and password are required' },
-      { status: 400 }
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
     )
   }
-
-  const supa = createSupabaseBrowserClient()
-  const { error, data } = await supa.auth.signInWithPassword({
-    email,
-    password,
-  })
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 401 })
-  }
-
-  // Use the validated redirectUrl from request or default to dashboard
-  const redirectTo = validateRedirectUrl(redirectUrl ?? null)
-
-  return NextResponse.json({
-    success: true,
-    session: data.session,
-    redirectTo,
-  })
 }

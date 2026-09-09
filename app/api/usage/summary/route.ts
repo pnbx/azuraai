@@ -16,24 +16,25 @@ import { supabaseAdmin } from '@/supabase/admin'
 import { authenticateApiKey } from '@/lib/security/auth'
 
 export async function GET(request: Request): Promise<NextResponse> {
-  // Authenticate
-  const authHeader = request.headers.get('Authorization')
-  const apiKeyAuth = await authenticateApiKey(authHeader)
+  try {
+    // Authenticate
+    const authHeader = request.headers.get('Authorization')
+    const apiKeyAuth = await authenticateApiKey(authHeader)
 
-  let userId: string
-  if (apiKeyAuth) {
-    userId = apiKeyAuth.userId
-  } else {
-    try {
-      const user = await requireServerUser()
-      userId = user.id
-    } catch {
-      return NextResponse.json(
-        { success: false, error: 'Unauthenticated' },
-        { status: 401 },
-      )
+    let userId: string
+    if (apiKeyAuth) {
+      userId = apiKeyAuth.userId
+    } else {
+      try {
+        const user = await requireServerUser()
+        userId = user.id
+      } catch {
+        return NextResponse.json(
+          { success: false, error: 'Unauthenticated' },
+          { status: 401 },
+        )
+      }
     }
-  }
 
   const url = new URL(request.url)
   const daysParam = parseInt(url.searchParams.get('days') ?? '30', 10)
@@ -122,4 +123,10 @@ export async function GET(request: Request): Promise<NextResponse> {
       recent,
     },
   })
+  } catch {
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 },
+    )
+  }
 }

@@ -48,7 +48,6 @@ const INTERNAL_PATHS = [
   '/static',
   '/favicon',
   '/images',
-  '/api/metrics',
 ]
 
 // API routes that are always public (no session check needed)

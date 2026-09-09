@@ -22,18 +22,24 @@ import { MockPaymentProvider } from '@/lib/payment/mock-provider';
 import { PAYMENT_CURRENCY } from '@/lib/payment/constants';
 
 // Provider registry: server determines which provider to use
-const PROVIDERS: Record<string, () => MockPaymentProvider> = {
-  'mock-provider': () => new MockPaymentProvider(),
-};
+// Mock provider is only available in development/test environments
+const PROVIDERS: Record<string, () => MockPaymentProvider> =
+  process.env.NODE_ENV !== 'production'
+    ? { 'mock-provider': () => new MockPaymentProvider() }
+    : {};
 
 function getProviderAdapter(providerId?: string) {
   const key = providerId || 'mock-provider';
   const factory = PROVIDERS[key];
   if (!factory) {
+    if (process.env.NODE_ENV !== 'production') {
+      // Development fallback
+      return new MockPaymentProvider();
+    }
     throw new PaymentError(
-      `Unknown payment provider: ${key}`,
+      `Payment processing is not configured. No payment provider is available in production.`,
       'unknown_provider',
-      400
+      503
     );
   }
   return factory();

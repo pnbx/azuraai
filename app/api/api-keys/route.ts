@@ -20,7 +20,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      throw new Error(`Failed to fetch API keys: ${error.message}`)
+      throw new Error('Failed to fetch API keys')
     }
 
     return NextResponse.json({
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      throw new Error(`Failed to create API key: ${error.message}`)
+      throw new Error('Failed to create API key')
     }
 
     return NextResponse.json({

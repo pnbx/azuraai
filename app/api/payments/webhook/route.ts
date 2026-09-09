@@ -17,9 +17,11 @@ import { handleWebhookEvent, PaymentError } from '@/lib/payment/service';
 import { MockPaymentProvider } from '@/lib/payment/mock-provider';
 
 // Provider registry for webhook verification
-const PROVIDERS: Record<string, () => MockPaymentProvider> = {
-  'mock-provider': () => new MockPaymentProvider(),
-};
+// Mock provider is only available in development/test environments
+const PROVIDERS: Record<string, () => MockPaymentProvider> =
+  process.env.NODE_ENV !== 'production'
+    ? { 'mock-provider': () => new MockPaymentProvider() }
+    : {};
 
 function getProviderAdapter(providerId: string) {
   const factory = PROVIDERS[providerId];
