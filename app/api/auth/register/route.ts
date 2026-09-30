@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/supabase/admin'
 
 /**
  * Validates a redirect URL to prevent open redirects and ensure safety
@@ -74,6 +75,24 @@ export async function POST(request: Request) {
         emailRedirectTo: validatedRedirectUrl,
       },
     })
+
+    // Dev mode: auto-confirm email so devs can test without email verification
+    if (!error && data.user && !data.session && process.env.NODE_ENV === 'development') {
+      await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+        email_confirm: true,
+      })
+      // Re-sign in to get a session
+      const { data: signInData } = await supa.auth.signInWithPassword({
+        email,
+        password,
+      })
+      if (signInData.session) {
+        return NextResponse.json({
+          success: true,
+          needsEmailVerification: false,
+        })
+      }
+    }
 
     if (error) {
       return NextResponse.json(

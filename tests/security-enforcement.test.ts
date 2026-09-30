@@ -580,31 +580,31 @@ describe('Cost Calculation', () => {
     const { estimateReservationCost } = await import('@/lib/security/usage')
 
     const cost = estimateReservationCost(
-      { inputTokenPrice: 10, outputTokenPrice: 30, requestFee: 5, ruleVersion: 1 },
+      { inputPricePerMillion: 5000, outputPricePerMillion: 15000, requestFee: 5, ruleVersion: 1 },
       1000,
     )
 
-    // 5 (fee) + 10 (input_price) * 1000 (tokens) = 10005
-    expect(cost).toBe(10005)
+    // 5 (fee) + ceil(5000 * 1000 / 1_000_000) = 5 + ceil(5) = 10
+    expect(cost).toBe(10)
   })
 
   it('calculates actual cost from real tokens', async () => {
     const { calculateActualCost } = await import('@/lib/security/usage')
 
     const cost = calculateActualCost(
-      { inputTokenPrice: 10, outputTokenPrice: 30, requestFee: 5, ruleVersion: 1 },
+      { inputPricePerMillion: 5000, outputPricePerMillion: 15000, requestFee: 5, ruleVersion: 1 },
       { inputTokens: 500, outputTokens: 200 },
     )
 
-    // 5 (fee) + 10*500 (input) + 30*200 (output) = 5 + 5000 + 6000 = 11005
-    expect(cost).toBe(11005)
+    // 5 (fee) + round((5000*500 + 15000*200) / 1_000_000) = 5 + round(5.5) = 11
+    expect(cost).toBe(11)
   })
 
   it('calculates cost with zero tokens', async () => {
     const { calculateActualCost } = await import('@/lib/security/usage')
 
     const cost = calculateActualCost(
-      { inputTokenPrice: 10, outputTokenPrice: 30, requestFee: 5, ruleVersion: 1 },
+      { inputPricePerMillion: 5000, outputPricePerMillion: 15000, requestFee: 5, ruleVersion: 1 },
       { inputTokens: 0, outputTokens: 0 },
     )
 

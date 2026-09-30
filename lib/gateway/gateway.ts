@@ -19,6 +19,8 @@ export interface GatewayConfig {
   defaultProviderId: "avali";
   /** Whether to log gateway operations (avoid in production if it might leak secrets) */
   enableLogging: boolean;
+  /** Provider call timeout in milliseconds (default: 30s) */
+  providerTimeoutMs: number;
 }
 
 /**
@@ -44,6 +46,7 @@ export class Gateway {
     this.config = {
       defaultProviderId: "avali",
       enableLogging: false,
+      providerTimeoutMs: 30_000,
       ...config,
     };
   }
@@ -99,8 +102,19 @@ export class Gateway {
         });
       }
 
-      // Execute request
-      const providerResponse = await provider.execute(request);
+      // Execute request with timeout
+      const timeoutMs = this.config.providerTimeoutMs;
+      const providerResponse = await Promise.race([
+        provider.execute(request),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new ProviderError({
+            type: "provider_unavailable",
+            message: `Provider '${providerId}' timed out after ${timeoutMs}ms`,
+            providerErrorId: "provider_timeout",
+            requestId: request.requestId,
+          })), timeoutMs)
+        ),
+      ]);
 
       // Log response (if enabled)
       if (this.config.enableLogging) {

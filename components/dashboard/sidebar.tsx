@@ -4,9 +4,12 @@ import * as React from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { AzuraWordmark, AzuraLogo } from '@/components/brand/logo'
+import { ThemeToggle } from '@/components/theme'
 import {
   LayoutDashboard,
   MessageSquare,
+  Sparkles,
   Cpu,
   BarChart3,
   CreditCard,
@@ -26,6 +29,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Playground', href: '/dashboard/playground', icon: MessageSquare },
+  { label: 'App Chat', href: '/app', icon: Sparkles },
   { label: 'Models', href: '/dashboard/models', icon: Cpu },
   { label: 'Usage', href: '/dashboard/usage', icon: BarChart3 },
   { label: 'Billing', href: '/dashboard/billing', icon: CreditCard },
@@ -55,13 +59,12 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProp
   const navContent = (
     <nav className="flex h-full flex-col">
       {/* Logo */}
-      <div className={cn('flex h-14 items-center border-b border-sidebar-border px-4', collapsed && 'justify-center')}>
-        {!collapsed && (
-          <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
-            AzuraAI
-          </span>
+      <div className={cn('flex h-14 items-center border-b border-sidebar-border px-4', collapsed && 'justify-center px-2')}>
+        {collapsed ? (
+          <AzuraLogo size={28} rounded="rounded-lg" />
+        ) : (
+          <AzuraWordmark />
         )}
-        {collapsed && <span className="text-sm font-bold text-sidebar-foreground">A</span>}
       </div>
 
       {/* Primary nav */}
@@ -114,6 +117,13 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProp
             </Link>
           )
         })}
+
+        {/* Theme toggle (desktop, non-collapsed) */}
+        {!collapsed ? (
+          <div className="px-1 pb-2">
+            <ThemeToggle compact />
+          </div>
+        ) : null}
 
         {/* Sign out */}
         <button

@@ -1,48 +1,118 @@
 "use strict";
 
 /**
- * Phase 4 AvalAI Provider Adapter
+ * AvalAI Provider Adapter
  *
- * Provider adapter for AvalAI AI service.
+ * Production adapter for AvalAI (https://api.avalai.ir/v1).
+ * AvalAI is OpenAI-compatible: uses the same request/response format,
+ * authentication via Bearer token, and standard chat completions endpoint.
  *
- * IMPORTANT:
- * - The exact AvalAI API endpoint, authentication mechanism, request/response
- *   formats are NOT yet verified in this repository.
- * - This file defines the STRUCTURE and CONTRACT that must be completed
- *   when the AvalAI API contract is known.
- * - Do NOT invent endpoints, headers, or schemas.
- * - Do NOT make actual HTTP requests to AvalAI from this code until the
- *   external API contract is verified and documented.
+ * API contract verified from:
+ *   - https://docs.avalai.ir/en/api-reference/introduction
+ *   - Base URL: https://api.avalai.ir/v1
+ *   - Auth: Authorization: Bearer <AVALAI_API_KEY>
+ *   - Chat endpoint: POST /v1/chat/completions
+ *   - Response format: OpenAI-compatible (choices, usage)
  *
- * The architecture is designed to be correct when the real AvalAI integration
- * is added; currently it is a skeleton that will fail at runtime until the
- * missing external API details are provided.
+ * Security:
+ *   - Only sends: model, messages, user-specified parameters
+ *   - Never sends: Supabase keys, session tokens, wallet data, internal metadata
  */
 
-import { Provider, ProviderRequest, ProviderResponse, ProviderError, ProviderConfig } from "./types";
+import {
+  Provider,
+  ProviderRequest,
+  ProviderResponse,
+  ProviderError,
+  ProviderConfig,
+} from "./types";
 import type { ProviderOperation } from "./types";
 
-/**
- * AvalAI Provider Configuration.
- * Fill in the actual AvalAI values when the API contract is known.
- */
+/** AvalAI configuration from environment */
+interface AvalAIEnvConfig {
+  apiKey: string;
+  baseUrl: string;
+}
+
+function getEnvConfig(): AvalAIEnvConfig {
+  const apiKey = process.env.AVALAI_API_KEY;
+  if (!apiKey) {
+    throw new ProviderError({
+      type: "provider_unavailable",
+      message: "AVALAI_API_KEY environment variable is not set",
+      providerErrorId: "avalai_missing_api_key",
+    });
+  }
+
+  const baseUrl = (process.env.AVALAI_BASE_URL || "https://api.avalai.ir/v1").replace(/\/+$/, "");
+  return { apiKey, baseUrl };
+}
+
+/** AvalAI chat completion response shape (OpenAI-compatible) */
+interface AvalAIChatResponse {
+  id?: string;
+  object?: string;
+  created?: number;
+  model?: string;
+  choices?: Array<{
+    message?: { role?: string; content?: string };
+    finish_reason?: string;
+    index?: number;
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+}
+
+/** Normalize user input into OpenAI-compatible messages array */
+function normalizeMessages(input: unknown): Array<{ role: string; content: string }> {
+  if (typeof input === "string") {
+    return [{ role: "user", content: input }];
+  }
+
+  if (Array.isArray(input)) {
+    return input.map((item) => {
+      if (typeof item === "string") {
+        return { role: "user", content: item };
+      }
+      if (item && typeof item === "object" && "role" in item && "content" in item) {
+        return { role: String(item.role), content: String(item.content) };
+      }
+      return { role: "user", content: JSON.stringify(item) };
+    });
+  }
+
+  if (input && typeof input === "object") {
+    const obj = input as Record<string, unknown>;
+    if (Array.isArray(obj.messages)) {
+      return normalizeMessages(obj.messages);
+    }
+  }
+
+  return [{ role: "user", content: JSON.stringify(input) }];
+}
+
+/** Map HTTP status to ProviderError type */
+function mapHttpStatusToErrorType(status: number): ProviderError["type"] {
+  if (status === 401) return "authentication_error";
+  if (status === 403) return "authorization_error";
+  if (status === 404) return "not_found";
+  if (status === 429) return "rate_limit_exceeded";
+  if (status >= 400 && status < 500) return "invalid_request";
+  if (status >= 500) return "provider_unavailable";
+  return "provider_error";
+}
+
 export const avalaiDefaultConfig: ProviderConfig = {
   id: "avali",
   name: "AvalAI",
-  defaultModel: "default", // To be set when contract is verified
-  capabilities: ["generate", "generate-image", "chat", "stream"],
-  enabled: false, // Disabled until external API contract is verified
+  defaultModel: "gpt-4o-mini",
+  capabilities: ["generate", "chat", "stream"],
+  enabled: false,
 };
 
-/**
- * AvalAI Provider Adapter class.
- * Implements the Provider interface.
- *
- * CAUTION: This adapter currently has NO functional HTTP requests.
- * It will throw errors indicating missing external API contract information.
- * Do NOT use in production until the AvalAI API endpoint, headers, and
- * request/response formats are verified and documented.
- */
 export class AvalAIProvider implements Provider {
   public readonly config: ProviderConfig;
 
@@ -54,41 +124,118 @@ export class AvalAIProvider implements Provider {
     return this.config.capabilities.includes(operation);
   }
 
-  /**
-   * Execute a request against AvalAI.
-   * Currently throws ProviderError indicating the external API contract
-   * is not yet verified in this repository.
-   *
-   * @param request The normalized provider request.
-   * @returns ProviderResponse on success (never reached currently).
-   * @throws ProviderError Always thrown until external API contract is verified.
-   */
   async execute(request: ProviderRequest): Promise<ProviderResponse> {
-    // Throw error indicating missing external API contract
-    throw new ProviderError({
-      type: "provider_unavailable",
-      message:
-        "AvalAI provider adapter is a skeleton — external API contract not yet verified in this repository. " +
-        "Cannot execute requests until AvalAI endpoint, headers, and request/response schemas are documented and validated.",
-      providerErrorId: "avali_contract_missing",
-      requestId: request.requestId,
-    });
+    const { apiKey, baseUrl } = getEnvConfig();
+
+    const messages = normalizeMessages(request.input);
+
+    const body: Record<string, unknown> = {
+      model: request.model,
+      messages,
+      ...request.parameters,
+    };
+
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Network error";
+      throw new ProviderError({
+        type: "provider_unavailable",
+        message: `AvalAI network error: ${message}`,
+        providerErrorId: "avalai_network_error",
+        requestId: request.requestId,
+      });
+    }
+
+    // Parse response body
+    let data: AvalAIChatResponse;
+    try {
+      data = await response.json() as AvalAIChatResponse;
+    } catch {
+      throw new ProviderError({
+        type: "invalid_response",
+        message: `AvalAI returned invalid JSON (HTTP ${response.status})`,
+        providerErrorId: "avalai_invalid_json",
+        requestId: request.requestId,
+      });
+    }
+
+    // Handle HTTP errors
+    if (!response.ok) {
+      const errorType = mapHttpStatusToErrorType(response.status);
+      const detail = (data as unknown as Record<string, unknown>)?.error;
+      const errorMsg = detail && typeof detail === "object" && "message" in detail
+        ? String((detail as Record<string, unknown>).message)
+        : `HTTP ${response.status}`;
+
+      throw new ProviderError({
+        type: errorType,
+        message: `AvalAI error: ${errorMsg}`,
+        code: response.status,
+        providerErrorId: "avalai_http_error",
+        requestId: request.requestId,
+      });
+    }
+
+    // Validate response structure
+    if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+      throw new ProviderError({
+        type: "invalid_response",
+        message: "AvalAI returned response with no choices",
+        providerErrorId: "avalai_no_choices",
+        requestId: request.requestId,
+      });
+    }
+
+    const firstChoice = data.choices[0];
+    const content = firstChoice?.message?.content;
+
+    if (content === undefined || content === null) {
+      throw new ProviderError({
+        type: "invalid_response",
+        message: "AvalAI returned choice with no content",
+        providerErrorId: "avalai_no_content",
+        requestId: request.requestId,
+      });
+    }
+
+    // Extract token usage (OpenAI-compatible fields)
+    const usage = data.usage ?? {};
+    const promptTokens = Number(usage.prompt_tokens) || 0;
+    const completionTokens = Number(usage.completion_tokens) || 0;
+
+    return {
+      provider: "avali",
+      model: request.model,
+      operation: request.operation,
+      content,
+      created: data.created,
+      id: data.id,
+      metadata: {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: promptTokens + completionTokens,
+        avalai_request_id: response.headers.get("avalai-request-id") ?? undefined,
+        finish_reason: firstChoice?.finish_reason,
+      },
+    };
   }
 }
 
 /**
- * Create an AvalAI provider instance using environment-based configuration.
- * Returns a provider that is currently disabled until the external API contract
- * is verified. This function documents exactly what information is missing.
+ * Create an AvalAI provider instance.
+ * Enabled when AVALAI_API_KEY is set.
  */
 export function createAvalAIProvider(): AvalAIProvider {
-  // Check if AVALAI_API_KEY exists in environment
-  // NOTE: The exact env variable name should match project conventions.
-  // The provider is only enabled when BOTH an API key exists AND the external
-  // API contract has been verified (no missing requirements).
-  const apiKeyExists = process.env.AVALAI_API_KEY !== undefined && process.env.AVALAI_API_KEY !== "";
-  const contractVerified = verifyAvalAIContract().length === 0;
-  const isEnabled = apiKeyExists && contractVerified;
+  const isEnabled = !!(process.env.AVALAI_API_KEY && process.env.AVALAI_API_KEY.length > 0);
 
   const config: ProviderConfig = {
     ...avalaiDefaultConfig,
@@ -96,50 +243,4 @@ export function createAvalAIProvider(): AvalAIProvider {
   };
 
   return new AvalAIProvider(config);
-}
-
-/**
- * Verify that the AvalAI external API contract is satisfied.
- * This function documents the exact information that must be provided
- * before the AvalAI provider can be used in production.
- *
- * Returns a list of missing requirements. Empty array means the contract
- * is satisfied and the provider can be used.
- *
- * THIS FUNCTION SHOULD BE CALLED during application startup. If it returns
- * non-empty results, the AvalAI provider should be disabled until the
- * missing information is provided.
- *
- * @returns Array of missing requirement descriptions.
- */
-export function verifyAvalAIContract(): ReadonlyArray<string> {
-  const missing: Array<string> = [];
-
-  // Check AVALAI_API_KEY exists
-  if (process.env.AVALAI_API_KEY === undefined || process.env.AVALAI_API_KEY === "") {
-    missing.push(
-      "AVALAI_API_KEY environment variable is not set or is empty"
-    );
-  }
-
-  // Check AVALAI_API_BASE_URL exists (if needed)
-  // The exact env variable name and format should match AvalAI's documented API.
-  // Currently not verified — comment out if base URL is not required.
-  // if (process.env.AVALAI_API_BASE_URL === undefined || process.env.AVALAI_API_BASE_URL === "") {
-  //   missing.push("AVALAI_API_BASE_URL environment variable is not set or is empty");
-  // }
-
-  // Check that the default model is configured
-  if (avalaiDefaultConfig.defaultModel === "default") {
-    missing.push(
-      "AvalAI defaultModel is not configured — set avalaiDefaultConfig.defaultModel to the actual AvalAI model identifier"
-    );
-  }
-
-  // Check that base URL is configured (if needed)
-  // if (avalaiDefaultConfig.baseUrl === undefined || avalaiDefaultConfig.baseUrl === "") {
-  //   missing.push("AvalAI baseUrl is not configured — set avalaiDefaultConfig.baseUrl to the actual AvalAI API base URL");
-  // }
-
-  return missing;
 }

@@ -15,7 +15,7 @@ function StatCard({ label, value, description, icon, className }: StatCardProps)
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          <p className="mt-1.5 text-xl font-semibold tracking-tight text-card-foreground truncate">
+          <p className="mt-1.5 text-xl font-semibold tracking-tight text-card-foreground">
             {value}
           </p>
           {description && (

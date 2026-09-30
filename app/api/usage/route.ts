@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       .limit(500)
 
     if (logsError) {
-      throw new Error(`Failed to fetch usage logs: ${logsError.message}`)
+      throw new Error('Failed to fetch usage logs')
     }
 
     // Aggregate stats

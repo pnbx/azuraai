@@ -356,12 +356,12 @@ describe('Phase 11: Cost Estimation Integer Safety', () => {
   it('estimateReservationCost uses integer arithmetic (no floating point)', async () => {
     const { estimateReservationCost } = await import('@/lib/security/usage')
 
-    // Test with values that would produce floating point if multiplied incorrectly
-    const pricing = { inputTokenPrice: 3, outputTokenPrice: 7, requestFee: 2, ruleVersion: 1 }
+    // Test with per-million-token values that produce integer results
+    const pricing = { inputPricePerMillion: 3000, outputPricePerMillion: 7000, requestFee: 2, ruleVersion: 1 }
     const cost = estimateReservationCost(pricing, 1000)
 
-    // 2 + 3 * 1000 = 3002
-    expect(cost).toBe(3002)
+    // 2 (fee) + ceil(3000 * 1000 / 1_000_000) = 2 + ceil(3) = 5
+    expect(cost).toBe(5)
     // Verify it's an integer
     expect(Number.isInteger(cost)).toBe(true)
   })
@@ -369,22 +369,22 @@ describe('Phase 11: Cost Estimation Integer Safety', () => {
   it('calculateActualCost produces integer results', async () => {
     const { calculateActualCost } = await import('@/lib/security/usage')
 
-    const pricing = { inputTokenPrice: 3, outputTokenPrice: 7, requestFee: 2, ruleVersion: 1 }
+    const pricing = { inputPricePerMillion: 3000, outputPricePerMillion: 7000, requestFee: 2, ruleVersion: 1 }
     const cost = calculateActualCost(pricing, { inputTokens: 333, outputTokens: 444 })
 
-    // 2 + 3*333 + 7*444 = 2 + 999 + 3108 = 4109
-    expect(cost).toBe(4109)
+    // 2 + round((3000*333 + 7000*444) / 1_000_000) = 2 + round(4.109) = 6
+    expect(cost).toBe(6)
     expect(Number.isInteger(cost)).toBe(true)
   })
 
   it('estimateReservationCost with large values stays integer', async () => {
     const { estimateReservationCost } = await import('@/lib/security/usage')
 
-    const pricing = { inputTokenPrice: 100, outputTokenPrice: 300, requestFee: 0, ruleVersion: 1 }
+    const pricing = { inputPricePerMillion: 100_000, outputPricePerMillion: 300_000, requestFee: 0, ruleVersion: 1 }
     const cost = estimateReservationCost(pricing, 1_000_000)
 
-    // 0 + 100 * 1_000_000 = 100_000_000
-    expect(cost).toBe(100_000_000)
+    // 0 + ceil(100_000 * 1_000_000 / 1_000_000) = 100_000
+    expect(cost).toBe(100_000)
     expect(Number.isInteger(cost)).toBe(true)
   })
 })

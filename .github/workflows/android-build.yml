@@ -1,0 +1,92 @@
+name: Android APK
+
+# Builds the Azura APK in the cloud — no local Android Studio needed.
+# Debug APK is always produced (installable as-is).
+# Release APK is signed only when the AZURA_* keystore secrets are set.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'capacitor.config.ts'
+      - '.github/workflows/android-build.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install deps + sync Capacitor
+        run: npm ci && npx cap sync android
+
+      - name: Decode release keystore (if provided)
+        env:
+          AZURA_KEYSTORE_B64: ${{ secrets.AZURA_KEYSTORE_B64 }}
+          AZURA_KEYSTORE_PASSWORD: ${{ secrets.AZURA_KEYSTORE_PASSWORD }}
+          AZURA_KEY_ALIAS: ${{ secrets.AZURA_KEY_ALIAS }}
+          AZURA_KEY_PASSWORD: ${{ secrets.AZURA_KEY_PASSWORD }}
+        run: |
+          if [ -n "$AZURA_KEYSTORE_B64" ]; then
+            echo "$AZURA_KEYSTORE_B64" | base64 -d > android/app/release.keystore
+            echo "RELEASE_SIGNING=true" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_SIGNING=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Ensure stable debug keystore
+        run: |
+          if [ ! -f android/app/debug.keystore ]; then
+            keytool -genkeypair -v -keystore android/app/debug.keystore \
+              -storepass android -keypass android -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Azura Debug,O=Azura,C=IR"
+            git config user.name "azura-ci"
+            git config user.email "ci@azuraai.ir"
+            git add android/app/debug.keystore
+            git commit -m "chore: add generated android debug keystore [skip ci]"
+            git push
+          fi
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Assemble release (signed if secrets present)
+        if: env.RELEASE_SIGNING == 'true'
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: azura-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload release APK (signed builds only)
+        if: env.RELEASE_SIGNING == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: azura-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error

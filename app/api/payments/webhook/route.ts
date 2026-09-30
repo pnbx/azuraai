@@ -15,18 +15,19 @@
 import { NextResponse } from 'next/server';
 import { handleWebhookEvent, PaymentError } from '@/lib/payment/service';
 import { MockPaymentProvider } from '@/lib/payment/mock-provider';
+import type { PaymentProviderAdapter } from '@/lib/payment/provider';
 
 // Provider registry for webhook verification
-// Mock provider is only available in development/test environments
-const PROVIDERS: Record<string, () => MockPaymentProvider> =
-  process.env.NODE_ENV !== 'production'
-    ? { 'mock-provider': () => new MockPaymentProvider() }
-    : {};
-
-function getProviderAdapter(providerId: string) {
-  const factory = PROVIDERS[providerId];
-  if (!factory) return null;
-  return factory();
+function createProvider(providerId: string): PaymentProviderAdapter | null {
+  switch (providerId) {
+    case 'mock-provider':
+      if (process.env.NODE_ENV === 'production') return null;
+      return new MockPaymentProvider();
+    default:
+      // ZarinPal uses redirect flow, not webhooks
+      // Unknown providers return null — webhook is silently accepted
+      return null;
+  }
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -40,7 +41,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       new URL(request.url).searchParams.get('provider') ||
       'mock-provider';
 
-    const providerAdapter = getProviderAdapter(providerId);
+    const providerAdapter = createProvider(providerId);
     if (!providerAdapter) {
       // Unknown provider — log but return 200 to prevent retry storms
       console.warn('[Webhook] Unknown provider:', providerId);

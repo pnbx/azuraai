@@ -42,7 +42,14 @@ export async function GET(): Promise<NextResponse> {
     )
   }
 
-  return NextResponse.json(checks, { status: 200 })
+  // Check provider availability
+  const hasProviderKey = !!process.env.AVALAI_API_KEY
+  const providerEnabled = hasProviderKey
+
+  return NextResponse.json({
+    ...checks,
+    provider: providerEnabled ? 'available' : 'unavailable',
+  }, { status: 200 })
 }
 
 function getEnvironmentLabel(): string {

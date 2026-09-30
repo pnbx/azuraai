@@ -45,7 +45,7 @@ export async function getBalance(userId: string): Promise<{
       // No balance row exists — create one
       return await createInitialBalance(userId)
     }
-    throw new Error(`Failed to fetch balance: ${error.message}`)
+    throw new Error('Failed to fetch balance')
   }
 
   return {
@@ -73,7 +73,7 @@ async function createInitialBalance(userId: string): Promise<{
     .single()
 
   if (error) {
-    throw new Error(`Failed to create initial balance: ${error.message}`)
+    throw new Error('Failed to create initial balance')
   }
 
   return {
@@ -111,7 +111,7 @@ export async function getWalletTransactions(userId: string, limit = 50): Promise
     .limit(limit)
 
   if (error) {
-    throw new Error(`Failed to fetch wallet transactions: ${error.message}`)
+    throw new Error('Failed to fetch wallet transactions')
   }
 
   return data.map((row) => ({
@@ -153,7 +153,7 @@ export async function creditBalance(
     })
 
     if (error) {
-      throw new Error(`RPC credit_balance failed: ${error.message}`)
+      throw new Error('RPC credit_balance failed')
     }
 
     return {
@@ -191,7 +191,7 @@ export async function debitBalance(
     })
 
     if (error) {
-      throw new Error(`RPC debit_balance failed: ${error.message}`)
+      throw new Error('RPC debit_balance failed')
     }
 
     return {
@@ -248,7 +248,7 @@ export async function revokeApiKey(
     })
 
     if (error) {
-      throw new Error(`RPC revoke_api_key failed: ${error.message}`)
+      throw new Error('RPC revoke_api_key failed')
     }
 
     return {

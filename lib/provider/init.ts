@@ -69,7 +69,6 @@ export function verifyProviderConfigurations(): string[] {
     try {
       const config = getProviderConfig(providerId);
 
-      // Basic validation
       if (!config.id) {
         errors.push(`Provider '${providerId}' has no ID`);
       }
@@ -83,8 +82,6 @@ export function verifyProviderConfigurations(): string[] {
       }
 
       if (config.enabled === false) {
-        // Note: a provider can be intentionally disabled, so this is a warning
-        // not an error
         console.warn(`[ProviderRegistry] Provider '${providerId}' is disabled`);
       }
     } catch (error) {

@@ -9,8 +9,8 @@
 import { supabaseAdmin } from '@/supabase/admin'
 
 export interface PricingInfo {
-  inputTokenPrice: number
-  outputTokenPrice: number
+  inputPricePerMillion: number
+  outputPricePerMillion: number
   requestFee: number
   ruleVersion: number
 }
@@ -46,7 +46,7 @@ export interface UsageRecordInput {
 export async function resolvePricing(modelId: string): Promise<PricingInfo | null> {
   const { data, error } = await supabaseAdmin
     .from('pricing_rules')
-    .select('input_token_price_cents, output_token_price_cents, request_fee_cents, version, effective_at, expires_at')
+    .select('input_price_per_million_tokens, output_price_per_million_tokens, request_fee_cents, version, effective_at, expires_at')
     .eq('model_id', modelId)
     .lte('effective_at', new Date().toISOString())
     .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
@@ -57,8 +57,8 @@ export async function resolvePricing(modelId: string): Promise<PricingInfo | nul
   if (error || !data) return null
 
   return {
-    inputTokenPrice: Number(data.input_token_price_cents),
-    outputTokenPrice: Number(data.output_token_price_cents),
+    inputPricePerMillion: Number(data.input_price_per_million_tokens),
+    outputPricePerMillion: Number(data.output_price_per_million_tokens),
     requestFee: Number(data.request_fee_cents),
     ruleVersion: data.version,
   }
@@ -72,7 +72,7 @@ export function estimateReservationCost(
   pricing: PricingInfo,
   estimatedInputTokens = 1000,
 ): number {
-  return pricing.requestFee + pricing.inputTokenPrice * estimatedInputTokens
+  return pricing.requestFee + Math.ceil(pricing.inputPricePerMillion * estimatedInputTokens / 1_000_000)
 }
 
 /**
@@ -82,10 +82,9 @@ export function calculateActualCost(
   pricing: PricingInfo,
   tokens: TokenUsage,
 ): number {
-  return (
-    pricing.requestFee +
-    pricing.inputTokenPrice * tokens.inputTokens +
-    pricing.outputTokenPrice * tokens.outputTokens
+  return pricing.requestFee + Math.round(
+    (pricing.inputPricePerMillion * tokens.inputTokens +
+     pricing.outputPricePerMillion * tokens.outputTokens) / 1_000_000,
   )
 }
 

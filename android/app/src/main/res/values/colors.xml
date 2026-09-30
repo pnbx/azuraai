@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Azura brand palette — generated from "AZURA AI logo system.png" -->
+    <color name="colorPrimary">#6848d8</color>
+    <color name="colorPrimaryDark">#482898</color>
+    <color name="colorAccent">#a78bfa</color>
+    <!-- Deep-space launch/splash background behind the mark -->
+    <color name="splash_background">#0b0b12</color>
+</resources>

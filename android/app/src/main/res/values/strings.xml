@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Azura</string>
+    <string name="title_activity_main">Azura</string>
+    <string name="package_name">ir.azuraai.app</string>
+    <string name="custom_url_scheme">ir.azuraai.app</string>
+</resources>

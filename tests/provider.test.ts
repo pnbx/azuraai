@@ -1,4 +1,4 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, afterEach } from '@jest/globals';
 import { registerProvider, getProvider, isProviderRegistered, listProviders, getProviderConfig } from '../lib/provider/registry';
 import { Provider, ProviderConfig, ProviderError, ProviderId, ProviderOperation, ProviderRequest, ProviderResponse } from '../lib/provider/types';
 import { createAvalAIProvider } from '../lib/provider/avaliProvider';
@@ -85,12 +85,27 @@ describe('Provider Registry', () => {
 });
 
 describe('AvalAI Provider', () => {
-  it('should be disabled by default', () => {
+  const origKey = process.env.AVALAI_API_KEY;
+
+  afterEach(() => {
+    if (origKey === undefined) delete process.env.AVALAI_API_KEY;
+    else process.env.AVALAI_API_KEY = origKey;
+  });
+
+  it('should be enabled when API key is set', () => {
+    process.env.AVALAI_API_KEY = 'test-key';
+    const provider = createAvalAIProvider();
+    expect(provider.config.enabled).toBe(true);
+  });
+
+  it('should be disabled when API key is missing', () => {
+    delete process.env.AVALAI_API_KEY;
     const provider = createAvalAIProvider();
     expect(provider.config.enabled).toBe(false);
   });
 
-  it('should throw when executing without verified contract', async () => {
+  it('should throw when executing without API key', async () => {
+    delete process.env.AVALAI_API_KEY;
     const provider = createAvalAIProvider();
     const request = {
       provider: 'avali' as ProviderId,
@@ -100,17 +115,18 @@ describe('AvalAI Provider', () => {
     } as ProviderRequest;
     await expect(provider.execute(request)).rejects.toMatchObject({
       type: 'provider_unavailable',
-      providerErrorId: 'avali_contract_missing',
+      providerErrorId: 'avalai_missing_api_key',
     });
   });
 
   it('should have correct capabilities', () => {
+    process.env.AVALAI_API_KEY = 'test-key';
     const provider = createAvalAIProvider();
     expect(provider.canHandle('generate')).toBe(true);
-    expect(provider.canHandle('generate-image')).toBe(true);
     expect(provider.canHandle('chat')).toBe(true);
     expect(provider.canHandle('stream')).toBe(true);
-    expect(provider.canHandle('transcribe')).toBe(false); // not in capabilities
+    expect(provider.canHandle('generate-image')).toBe(false);
+    expect(provider.canHandle('transcribe')).toBe(false);
   });
 });
 

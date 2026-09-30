@@ -19,30 +19,36 @@ import { NextResponse } from 'next/server';
 import { requireServerUser } from '@/lib/auth/server';
 import { createPaymentIntent, PaymentError } from '@/lib/payment/service';
 import { MockPaymentProvider } from '@/lib/payment/mock-provider';
-import { PAYMENT_CURRENCY } from '@/lib/payment/constants';
+import { ZarinPalProvider } from '@/lib/payment/zarinpal-provider';
+import type { PaymentProviderAdapter } from '@/lib/payment/provider';
 
 // Provider registry: server determines which provider to use
-// Mock provider is only available in development/test environments
-const PROVIDERS: Record<string, () => MockPaymentProvider> =
-  process.env.NODE_ENV !== 'production'
-    ? { 'mock-provider': () => new MockPaymentProvider() }
-    : {};
-
-function getProviderAdapter(providerId?: string) {
-  const key = providerId || 'mock-provider';
-  const factory = PROVIDERS[key];
-  if (!factory) {
-    if (process.env.NODE_ENV !== 'production') {
-      // Development fallback
+function createProvider(providerId: string): PaymentProviderAdapter | null {
+  switch (providerId) {
+    case 'zarinpal':
+      // ZarinPal: available when merchant ID is configured
+      if (!process.env.ZARINPAL_MERCHANT_ID) return null;
+      return new ZarinPalProvider();
+    case 'mock-provider':
+      // Mock: only in development/test
+      if (process.env.NODE_ENV === 'production') return null;
       return new MockPaymentProvider();
-    }
+    default:
+      return null;
+  }
+}
+
+function getProviderAdapter(providerId?: string): PaymentProviderAdapter {
+  const key = providerId || (process.env.ZARINPAL_MERCHANT_ID ? 'zarinpal' : 'mock-provider');
+  const adapter = createProvider(key);
+  if (!adapter) {
     throw new PaymentError(
-      `Payment processing is not configured. No payment provider is available in production.`,
+      `Payment provider '${key}' is not configured.`,
       'unknown_provider',
       503
     );
   }
-  return factory();
+  return adapter;
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -85,7 +91,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     // Server determines the provider (never trust client for this)
-    const providerAdapter = getProviderAdapter(body.provider as string | undefined);
+    const providerAdapter = getProviderAdapter();
 
     // Create payment intent
     const result = await createPaymentIntent(

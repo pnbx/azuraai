@@ -41,7 +41,7 @@ const enabledModel = {
   provider_model_id: 'provider-test-model', capabilities: ['generate'] as ProviderOperation[],
   enabled: true, status: 'active' as const, created_at: '2026-09-09T00:00:00.000Z', updated_at: '2026-09-09T00:00:00.000Z',
 };
-const testPricingRow = { input_token_price_cents: 10, output_token_price_cents: 30, request_fee_cents: 5, version: 1 };
+const testPricingRow = { input_price_per_million_tokens: 10, output_price_per_million_tokens: 30, request_fee_cents: 5, version: 1 };
 const VALID_AUTH_HEADER = 'Bearer az_test-secret-key-12345';
 /** Valid API key data returned by `from('api_keys')` chain for authentication */
 const okApiKey = okChain({ id: 'key-001', user_id: testUser.id, scope: 'full', users: { id: testUser.id, is_active: true } });
