@@ -20,6 +20,7 @@
     "@capacitor/cli": "^8.5.2",
     "@capacitor/core": "^8.5.2",
     "@capacitor/haptics": "^8.0.2",
+    "@capawesome/capacitor-android-edge-to-edge-support": "^8.0.8",
     "@supabase/auth-js": "^2.116.0",
     "@supabase/ssr": "^0.12.6",
     "@supabase/supabase-js": "^2.116.0",

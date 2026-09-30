@@ -105,10 +105,10 @@ function ConversationRow({
         >
           <input
             autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => {
-              onRename(draft.trim() || conv.title)
+            defaultValue={conv.title}
+            onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
+            onBlur={(e) => {
+              onRename((e.target as HTMLInputElement).value.trim() || conv.title)
               setRenaming(false)
             }}
             className="w-full rounded-lg border border-border-strong bg-background px-2 py-1.5 text-sm outline-none"
@@ -202,6 +202,7 @@ export function ConversationsDrawer(props: DrawerProps) {
   } = props
 
   const [query, setQuery] = React.useState('')
+  const searchRef = React.useRef<HTMLInputElement>(null)
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return conversations
@@ -240,13 +241,21 @@ export function ConversationsDrawer(props: DrawerProps) {
         <div className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-card/60 px-3 py-2">
           <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            ref={searchRef}
+            // Uncontrolled: keeps Persian/Arabic IME composition intact.
+            defaultValue=""
+            onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
             placeholder="Search chats…"
             className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           {query ? (
-            <button onClick={() => setQuery('')} aria-label="Clear search">
+            <button
+              onClick={() => {
+                setQuery('')
+                if (searchRef.current) searchRef.current.value = ''
+              }}
+              aria-label="Clear search"
+            >
               <X className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
           ) : null}

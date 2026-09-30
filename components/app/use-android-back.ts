@@ -26,7 +26,11 @@ type BackHandlers = {
 
 export function useAndroidBackButton(handlers: BackHandlers) {
   const ref = React.useRef(handlers)
-  ref.current = handlers
+  // Keep the latest handlers without re-registering the listener;
+  // assignment happens in an effect, never during render.
+  React.useEffect(() => {
+    ref.current = handlers
+  })
 
   React.useEffect(() => {
     let cleanup: (() => void) | undefined

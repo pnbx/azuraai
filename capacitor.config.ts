@@ -22,6 +22,13 @@ const config: CapacitorConfig = {
     captureInput: true,
     webContentsDebuggingEnabled: false,
   },
+  plugins: {
+    // Android 15 forces edge-to-edge: without inset handling the app
+    // renders under the status bar (battery/clock cover the hamburger).
+    EdgeToEdge: {
+      backgroundColor: '#0b0b12',
+    },
+  },
 }
 
 export default config

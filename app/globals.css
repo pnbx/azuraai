@@ -159,6 +159,47 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* ── Mobile app feel ─────────────────────────────────────────────────────── */
+/* Kill the ugly gray/brand tap flash on every touch (Android WebView). */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+/* Momentum scrolling in the WebView. */
+body {
+  -webkit-overflow-scrolling: touch;
+}
+/* Native-feeling selection color in brand violet. */
+::selection {
+  background: color-mix(in srgb, var(--color-brand, #6848d8) 32%, transparent);
+}
+/* No focus ring on touch press — keyboard users still get :focus-visible. */
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible) {
+  outline: none;
+}
+/* Inputs must never force React state mid-IME-composition — this alone
+   prevents Persian/Arabic letters from vanishing (سلام → سلا). */
+input,
+textarea {
+  outline: none;
+}
+/* Tactile press feedback on every tappable element — subtle, universal.
+   Framer-motion buttons override transform inline with their own spring
+   whileTap, so the two systems never fight. */
+button {
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease,
+    transform 120ms ease,
+    opacity 150ms ease;
+}
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
 /* ── Scrollbars ─────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;

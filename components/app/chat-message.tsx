@@ -222,8 +222,8 @@ export function AppChatMessage({
           <div className="w-full max-w-[85%] rounded-2xl border border-border-strong bg-card p-3">
             <textarea
               autoFocus
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              defaultValue={message.content}
+              onInput={(e) => setDraft((e.target as HTMLTextAreaElement).value)}
               rows={Math.min(8, draft.split('\n').length + 1)}
               className="w-full resize-none bg-transparent text-sm outline-none"
             />

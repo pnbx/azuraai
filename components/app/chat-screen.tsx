@@ -99,7 +99,11 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
   const demoMode = rawDemoMode || lastAssistant?.demo === true
   const busy = state === 'connecting' || state === 'streaming'
-  const [input, setInput] = React.useState('')
+  // Composer is UNCONTROLLED: React never writes `value` back to the
+  // textarea, which silently corrupts IME composition (Persian/Arabic
+  // letters vanish mid-word, e.g. سلام → سلا). We keep a boolean mirror
+  // for the send button and read the text from the DOM at send time.
+  const [hasText, setHasText] = React.useState(false)
   const [mode, setMode] = React.useState<ChatMode>('fast')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const bottomRef = React.useRef<HTMLDivElement>(null)
@@ -156,9 +160,20 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages])
 
-  // ── Voice input ────────────────────────────────────────────────────────────
+  // ── Voice input ────────────────────────────────────────────────────────
+  const setComposerText = React.useCallback((text: string) => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.value = text
+    ta.style.height = 'auto'
+    ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`
+    setHasText(text.trim().length > 0)
+  }, [])
+
   const voice = useVoiceInput((text, isFinal) => {
-    if (isFinal) setInput((prev) => (prev ? `${prev} ${text}`.trim() : text))
+    if (!isFinal) return
+    const prev = textareaRef.current?.value ?? ''
+    setComposerText(prev ? `${prev} ${text}`.trim() : text)
   })
 
   // ── Sending ────────────────────────────────────────────────────────────────
@@ -190,7 +205,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
   )
 
   async function handleSend(override?: { text: string; mode: ChatMode; history: ChatMsg[] }) {
-    const text = override ? override.text : input.trim()
+    const text = override ? override.text : (textareaRef.current?.value ?? '').trim()
     if (!text || busy) return
     haptic('light')
 
@@ -202,8 +217,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
       const userMsg: ChatMsg = { role: 'user', content: text, ts: Date.now() }
       history = [...messages, userMsg]
       setMessages(history)
-      setInput('')
-      if (textareaRef.current) textareaRef.current.style.height = 'auto'
+      setComposerText('')
     }
 
     let id = activeId
@@ -267,7 +281,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
     setDrawerOpen(false)
     setMessages([])
     setActiveId(null)
-    setInput('')
+    setComposerText('')
     haptic('light')
   }, [])
 
@@ -399,7 +413,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
           <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-3xl px-4 pb-6 pt-4">
               {messages.length === 0 ? (
-                <EmptyState mode={mode} authed={authed} onSuggestion={(s) => setInput(s)} />
+                <EmptyState mode={mode} authed={authed} onSuggestion={(s) => setComposerText(s)} />
               ) : null}
 
               <AnimatePresence initial={false}>
@@ -537,10 +551,12 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                 >
                   <textarea
                     ref={textareaRef}
-                    value={input}
+                    // Uncontrolled: defaultValue only, never `value` —
+                    // keeps IME composition (Persian/Arabic) intact.
+                    defaultValue=""
                     dir="auto"
                     onChange={(e) => {
-                      setInput(e.target.value)
+                      setHasText(e.target.value.trim().length > 0)
                       e.target.style.height = 'auto'
                       e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`
                     }}
@@ -600,12 +616,12 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                   <motion.button
                     layout
                     onClick={() => handleSend()}
-                    disabled={!input.trim()}
+                    disabled={!hasText}
                     whileTap={{ scale: 0.92 }}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand text-white shadow-lg disabled:opacity-40"
                     aria-label="Send message"
                   >
-                    <motion.span animate={input.trim() ? { scale: 1 } : { scale: 0.9 }} className="flex">
+                    <motion.span animate={hasText ? { scale: 1 } : { scale: 0.9 }} className="flex">
                       <Send className="h-4 w-4" />
                     </motion.span>
                   </motion.button>
