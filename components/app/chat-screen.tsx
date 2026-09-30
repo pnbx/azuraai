@@ -94,9 +94,10 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
 
   // ── Stream ─────────────────────────────────────────────────────────────────
   const { send, cancel, dismissError, state, errorMsg, demoMode: rawDemoMode } = useAppChatStream()
-  // Demo responses come through flagged message metadata too.
-  const demoMode =
-    rawDemoMode || messages.some((m) => m.demo === true)
+  // Demo badge tracks the latest assistant reply only — old flagged
+  // messages from earlier sessions must not keep the badge alive.
+  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
+  const demoMode = rawDemoMode || lastAssistant?.demo === true
   const busy = state === 'connecting' || state === 'streaming'
   const [input, setInput] = React.useState('')
   const [mode, setMode] = React.useState<ChatMode>('fast')
