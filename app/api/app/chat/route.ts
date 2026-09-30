@@ -39,9 +39,9 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 /** Free models: fast chat vs heavy reasoning. */
-const MODEL_FAST = process.env.OPENROUTER_MODEL_FAST || 'deepseek/deepseek-chat-v3-0324:free'
+const MODEL_FAST = process.env.OPENROUTER_MODEL_FAST || 'openrouter/free'
 const MODEL_THINKING =
-  process.env.OPENROUTER_MODEL_THINKING || 'deepseek/deepseek-r1:free'
+  process.env.OPENROUTER_MODEL_THINKING || 'openrouter/free'
 const DAILY_CAP = Number(process.env.APP_CHAT_DAILY_CAP || 30)
 const MAX_POOL_ATTEMPTS = 4
 

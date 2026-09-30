@@ -28,7 +28,7 @@ export const runtime = 'nodejs'
 export const maxDuration = 120
 
 const MODEL_RESEARCH =
-  process.env.OPENROUTER_MODEL_RESEARCH || 'deepseek/deepseek-chat-v3-0324:free'
+  process.env.OPENROUTER_MODEL_RESEARCH || 'openrouter/free'
 const DAILY_CAP = Number(process.env.APP_CHAT_DAILY_CAP || 30)
 
 interface ResearchBody {
