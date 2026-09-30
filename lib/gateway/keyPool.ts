@@ -50,7 +50,7 @@ let envCursor = 0
 function getEnvKeyStates(): EnvKeyState[] {
   const raw = process.env.OPENROUTER_KEYS || ''
   const keys = raw
-    .split(',')
+    .split(/[\s,;]+/)
     .map((k) => k.trim())
     .filter((k) => k.startsWith('sk-or-'))
 
