@@ -40,6 +40,7 @@ import { ThinkingPanel, StageRail } from './thinking-panel'
 import { ConversationsDrawer } from './drawer'
 import { useVoiceInput } from './voice-input'
 import { haptic } from './haptics'
+import { useAndroidBackButton } from './use-android-back'
 
 const spring = { type: 'spring' as const, stiffness: 380, damping: 30 }
 
@@ -268,6 +269,18 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
     setInput('')
     haptic('light')
   }, [])
+
+  // Android hardware back button: close drawer → stop stream → leave
+  // settings/integrations → otherwise let the system background the app.
+  useAndroidBackButton({
+    drawerOpen,
+    closeDrawer: () => setDrawerOpen(false),
+    busy,
+    stopGeneration: () => {
+      cancel()
+      haptic('heavy')
+    },
+  })
 
   const handleSelect = React.useCallback(
     (id: string) => {
