@@ -24,11 +24,11 @@ const vazirmatn = Vazirmatn({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Azura — AI Assistant',
+    default: 'Azura - AI API Platform',
     template: '%s · Azura',
   },
   description:
-    'Azura is your AI assistant: fast answers, deep thinking, and web-grounded research — with an API platform for builders.',
+    'Production-grade AI API platform with AvalAI upstream provider, plus a mobile-first AI assistant app.',
   applicationName: 'Azura',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
@@ -45,8 +45,8 @@ export const metadata: Metadata = {
     apple: [{ url: '/brand/icons/apple-touch-icon.png', sizes: '180x180' }],
   },
   openGraph: {
-    title: 'Azura — AI Assistant',
-    description: 'Fast answers, deep thinking, and web-grounded research.',
+    title: 'Azura - AI API Platform',
+    description: 'Production-grade AI API platform with AvalAI upstream provider.',
     siteName: 'Azura',
     type: 'website',
   },

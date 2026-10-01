@@ -1,37 +1,44 @@
 @import "tailwindcss";
 
 /*
- * Azura design system
- * ───────────────────
- * Brand palette extracted from "AZURA AI logo system.png" (scripts/brand.mjs):
- *   brand #6848d8 · deep #482898 · paper #f8f8f8
+ * Azura design system — APP palette
+ * ───────────────────────────────────
+ * The app uses the ORIGINAL Azura zinc/monochrome system (the pre-app site
+ * design): near-black primary actions in light, near-white in dark, zinc
+ * neutrals everywhere. No violet — "brand" is the theme-inverting accent.
  * Dark is the default experience (Grok-style). Theme is applied pre-paint by
  * an inline script in app/layout.tsx: `dark` on <html> by default, `light`
  * when the user explicitly chooses it.
  */
 
+/*
+ * Palette policy: the app uses the ORIGINAL Azura zinc/monochrome system
+ * (the pre-app site design). No violet anywhere — "brand" is simply the
+ * theme-inverting accent (near-black in light, near-white in dark), which
+ * is exactly how the original site styled its primary actions.
+ */
 :root {
-  /* Brand */
-  --brand: #6848d8;
-  --brand-strong: #7c5cf0;
-  --brand-deep: #482898;
-  --brand-soft: rgba(104, 72, 216, 0.14);
-  --brand-glow: rgba(124, 92, 240, 0.45);
+  /* Brand — theme-inverting monochrome accent */
+  --brand: #18181b;
+  --brand-strong: #3f3f46;
+  --brand-deep: #09090b;
+  --brand-soft: rgba(24, 24, 27, 0.07);
+  --brand-glow: rgba(0, 0, 0, 0.28);
 
-  --background: #f7f7fb;
-  --foreground: #14121f;
+  --background: #ffffff;
+  --foreground: #09090b;
   --card: #ffffff;
-  --card-foreground: #14121f;
-  --border: #e4e4ee;
-  --border-strong: #cfcfdd;
-  --muted: #ededf4;
-  --muted-foreground: #6b6880;
-  --accent: #14121f;
+  --card-foreground: #09090b;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  --muted: #f5f5f5;
+  --muted-foreground: #737373;
+  --accent: #18181b;
   --accent-foreground: #fafafa;
-  --primary: #14121f;
+  --primary: #18181b;
   --primary-foreground: #fafafa;
-  --secondary: #ededf4;
-  --secondary-foreground: #14121f;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #18181b;
   --destructive: #dc2626;
   --destructive-foreground: #fafafa;
   --success: #16a34a;
@@ -40,18 +47,18 @@
   --warning-foreground: #fafafa;
   --info: #2563eb;
   --info-foreground: #fafafa;
-  --ring: #6848d8;
-  --sidebar: #f1f0f8;
-  --sidebar-foreground: #14121f;
-  --sidebar-border: #e4e4ee;
-  --sidebar-muted: #e6e5f0;
-  --sidebar-accent: #e8e6f5;
+  --ring: #18181b;
+  --sidebar: #fafafa;
+  --sidebar-foreground: #09090b;
+  --sidebar-border: #e5e7eb;
+  --sidebar-muted: #f5f5f5;
+  --sidebar-accent: #f0f0f0;
   --topbar: rgba(255, 255, 255, 0.82);
-  --topbar-border: #e4e4ee;
-  --input: #dcdbe8;
-  --input-focus: #6848d8;
-  --code-bg: #f3f2fa;
-  --radius: 0.75rem;
+  --topbar-border: #e5e7eb;
+  --input: #e5e7eb;
+  --input-focus: #18181b;
+  --code-bg: #f4f4f5;
+  --radius: 0.625rem;
 }
 
 .light {
@@ -59,39 +66,45 @@
 }
 
 .dark {
-  --background: #0b0a10;
-  --foreground: #f4f3f8;
-  --card: #141219;
-  --card-foreground: #f4f3f8;
-  --border: #26232f;
-  --border-strong: #3a3648;
-  --muted: #1c1924;
-  --muted-foreground: #a29fb3;
-  --accent: #f4f3f8;
-  --accent-foreground: #0b0a10;
-  --primary: #f4f3f8;
-  --primary-foreground: #0b0a10;
-  --secondary: #1c1924;
-  --secondary-foreground: #f4f3f8;
+  --brand: #fafafa;
+  --brand-strong: #d4d4d8;
+  --brand-deep: #a1a1aa;
+  --brand-soft: rgba(250, 250, 250, 0.1);
+  --brand-glow: rgba(255, 255, 255, 0.12);
+
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #09090b;
+  --card-foreground: #fafafa;
+  --border: #27272a;
+  --border-strong: #3f3f46;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --accent: #fafafa;
+  --accent-foreground: #09090b;
+  --primary: #fafafa;
+  --primary-foreground: #09090b;
+  --secondary: #18181b;
+  --secondary-foreground: #fafafa;
   --destructive: #ef4444;
   --destructive-foreground: #fafafa;
   --success: #22c55e;
   --success-foreground: #fafafa;
   --warning: #f59e0b;
-  --warning-foreground: #0b0a10;
-  --info: #60a5fa;
-  --info-foreground: #0b0a10;
-  --ring: #8b6cf5;
-  --sidebar: #0f0d15;
-  --sidebar-foreground: #f4f3f8;
-  --sidebar-border: #221f2c;
-  --sidebar-muted: #171420;
-  --sidebar-accent: #1d1a28;
-  --topbar: rgba(11, 10, 16, 0.8);
-  --topbar-border: #221f2c;
-  --input: #2a2736;
-  --input-focus: #8b6cf5;
-  --code-bg: #17141f;
+  --warning-foreground: #09090b;
+  --info: #3b82f6;
+  --info-foreground: #fafafa;
+  --ring: #d4d4d8;
+  --sidebar: #09090b;
+  --sidebar-foreground: #fafafa;
+  --sidebar-border: #27272a;
+  --sidebar-muted: #18181b;
+  --sidebar-accent: #1c1c1f;
+  --topbar: rgba(9, 9, 11, 0.8);
+  --topbar-border: #27272a;
+  --input: #27272a;
+  --input-focus: #d4d4d8;
+  --code-bg: #18181b;
 }
 
 @theme inline {
@@ -170,7 +183,7 @@ body {
 }
 /* Native-feeling selection color in brand violet. */
 ::selection {
-  background: color-mix(in srgb, var(--color-brand, #6848d8) 32%, transparent);
+  background: color-mix(in srgb, var(--color-brand, #18181b) 32%, transparent);
 }
 /* Inputs must never show a focus outline (touch or keyboard) and must
    never force React state mid-IME-composition — this alone prevents
@@ -310,17 +323,17 @@ button:not(:disabled):active {
   margin-left: 2px;
   vertical-align: text-bottom;
   border-radius: 1px;
-  background: var(--brand-strong);
+  background: var(--foreground);
   animation: caret-blink 1s steps(1) infinite;
 }
 
 /* ── Brand gradient orb / logo glow ─────────────────────────────────────── */
 .brand-orb {
   background:
-    radial-gradient(circle at 30% 28%, #b9a5ff 0%, #7c5cf0 42%, #482898 78%, #241354 100%);
+    radial-gradient(circle at 30% 28%, #52525b 0%, #27272a 45%, #09090b 100%);
   box-shadow:
-    0 0 24px var(--brand-glow),
-    inset 0 0 12px rgba(255, 255, 255, 0.18);
+    0 0 20px var(--brand-glow),
+    inset 0 0 12px rgba(255, 255, 255, 0.08);
 }
 
 @keyframes float-y {
@@ -372,7 +385,7 @@ button:not(:disabled):active {
   margin: 1.2em 0;
 }
 .md-body blockquote {
-  border-left: 3px solid var(--brand);
+  border-left: 3px solid var(--border-strong);
   padding-left: 0.9em;
   color: var(--muted-foreground);
 }
