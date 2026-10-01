@@ -172,18 +172,25 @@ body {
 ::selection {
   background: color-mix(in srgb, var(--color-brand, #6848d8) 32%, transparent);
 }
-/* No focus ring on touch press — keyboard users still get :focus-visible. */
-button:focus:not(:focus-visible),
-a:focus:not(:focus-visible),
-input:focus:not(:focus-visible),
-textarea:focus:not(:focus-visible) {
-  outline: none;
-}
-/* Inputs must never force React state mid-IME-composition — this alone
-   prevents Persian/Arabic letters from vanishing (سلام → سلا). */
+/* Inputs must never show a focus outline (touch or keyboard) and must
+   never force React state mid-IME-composition — this alone prevents
+   Persian/Arabic letters from vanishing (سلام → سلا). */
 input,
-textarea {
-  outline: none;
+textarea,
+[contenteditable] {
+  outline: none !important;
+  --tw-ring-color: transparent;
+}
+input:focus,
+textarea:focus,
+[contenteditable]:focus {
+  outline: none !important;
+  box-shadow: none;
+}
+input:focus-visible,
+textarea:focus-visible,
+[contenteditable]:focus-visible {
+  outline: none !important; /* Chrome always matches :focus-visible on text inputs — even on touch */
 }
 /* Tactile press feedback on every tappable element — subtle, universal.
    Framer-motion buttons override transform inline with their own spring
@@ -217,9 +224,16 @@ button:not(:disabled):active {
 }
 
 /* ── Focus ──────────────────────────────────────────────────────────────── */
-:focus-visible {
+/* Focus rings exist for keyboard navigation ONLY, and only on buttons/links.
+   Text inputs are excluded — on Android Chrome every tap into an input
+   matches :focus-visible, which painted the infamous violet ring on the
+   composer (and anywhere the old global rule reached). */
+:where(button, a, [role='button'], [role='tab'], summary):focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+:where(input, textarea, [contenteditable]):focus-visible {
+  outline: none;
 }
 
 /* ── Persian typography refinements ────────────────────────────────────── */

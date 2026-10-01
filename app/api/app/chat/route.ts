@@ -28,12 +28,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerUser } from '@/lib/auth/server'
 import { supabaseAdmin } from '@/supabase/admin'
-import { withPoolFailover, defaultIsRetryable } from '@/lib/gateway/keyPool'
+import { withPoolFailover, defaultIsRetryable, type PooledKey } from '@/lib/gateway/keyPool'
 import {
   streamChatCompletion,
   OpenRouterError,
   type ChatMessage,
 } from '@/lib/gateway/openrouterClient'
+import {
+  extractMemories,
+  dedupeMemories,
+  renderMemoryBlock,
+  type UserMemory,
+} from '@/lib/gateway/memory'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -53,6 +59,8 @@ const SYSTEM_PROMPT =
 interface ChatRequestBody {
   messages?: Array<{ role: 'user' | 'assistant'; content: string }>
   mode?: 'fast' | 'thinking'
+  /** Client toggle: allow reading + auto-extracting long-term memories. */
+  remember?: boolean
 }
 
 function sseFrame(obj: unknown): string {
@@ -118,9 +126,34 @@ export async function POST(req: NextRequest) {
 
   const mode = body.mode === 'thinking' ? 'thinking' : 'fast'
   const model = mode === 'thinking' ? MODEL_THINKING : MODEL_FAST
+  const remember = body.remember === true
+
+  // ─── Memory: load durable facts for the system prompt ──────────────────
+  let memoryBlock = ''
+  let memoriesForExtraction: UserMemory[] = []
+  let canExtractMemory = false
+  if (remember) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('user_memory')
+        .select('id, content, source, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+      if (error) throw error
+      memoriesForExtraction = (data ?? []) as UserMemory[]
+      memoryBlock = renderMemoryBlock(memoriesForExtraction)
+      canExtractMemory = memoriesForExtraction.length < 100
+    } catch (err) {
+      // Memory is best-effort — never block chat on it.
+      console.error('[AppChat] memory load failed (continuing without):', err)
+    }
+  }
 
   const messages: ChatMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    {
+      role: 'system',
+      content: memoryBlock ? `${SYSTEM_PROMPT}\n\n${memoryBlock}` : SYSTEM_PROMPT,
+    },
     ...rawMessages.map((m) => ({
       role: m.role === 'assistant' ? ('assistant' as const) : ('user' as const),
       content: m.content,
@@ -201,6 +234,17 @@ export async function POST(req: NextRequest) {
               reasoning: outcome.result.reasoning,
             })
           )
+          // ─── Memory extraction (fire-and-forget, never blocks) ─────────
+          if (remember && canExtractMemory) {
+            void extractAndStoreMemories({
+              userId: user.id,
+              apiKey: outcome.key.apiKey,
+              existing: memoriesForExtraction,
+              recentMessages: rawMessages.slice(-12),
+            }).catch((err) =>
+              console.error('[AppChat] memory extraction failed:', err)
+            )
+          }
         } else {
           const detail =
             outcome.error instanceof OpenRouterError
@@ -234,4 +278,38 @@ export async function POST(req: NextRequest) {
       'X-Request-Id': requestId,
     },
   })
+}
+
+// ─── Memory: background extraction + storage ────────────────────────────────
+
+/**
+ * Fire-and-forget memory pipeline. Runs AFTER the user's answer finished
+ * streaming: extracts durable facts from the last exchange, dedupes against
+ * what's already stored, and inserts the new ones. Failures are logged and
+ * swallowed — memory must never break chat.
+ */
+async function extractAndStoreMemories(opts: {
+  userId: string
+  apiKey: string
+  existing: UserMemory[]
+  recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>
+}): Promise<void> {
+  const extracted = await extractMemories({
+    apiKey: opts.apiKey,
+    model: MODEL_FAST,
+    recentMessages: opts.recentMessages,
+  })
+  if (extracted.length === 0) return
+
+  const fresh = dedupeMemories(opts.existing, extracted)
+  if (fresh.length === 0) return
+
+  const rows = fresh.map((content) => ({
+    user_id: opts.userId,
+    content,
+    source: 'auto',
+  }))
+
+  const { error } = await supabaseAdmin.from('user_memory').insert(rows)
+  if (error) throw new Error(error.message)
 }

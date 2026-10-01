@@ -9,7 +9,7 @@
  */
 
 import * as React from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Palette,
   Plug,
@@ -19,10 +19,13 @@ import {
   Check,
   MessageSquare,
   ShieldCheck,
+  Brain,
+  X,
 } from 'lucide-react'
 import { useTheme } from '@/components/theme'
 import { AzuraLogo } from '@/components/brand/logo'
 import { useConversations } from './use-conversations'
+import { useMemory } from './use-memory'
 import { haptic } from './haptics'
 
 const spring = { type: 'spring' as const, stiffness: 340, damping: 28 }
@@ -64,9 +67,12 @@ function Row({
 export function AppSettingsPanel({ authed }: { authed: boolean }) {
   const { theme } = useTheme()
   const { conversations, remove } = useConversations()
+  const memory = useMemory()
   const [confirmClear, setConfirmClear] = React.useState(false)
   const [cleared, setCleared] = React.useState(false)
   const [exported, setExported] = React.useState(false)
+  const [newMemory, setNewMemory] = React.useState('')
+  const [memoryAdded, setMemoryAdded] = React.useState(false)
 
   const messageCount = conversations.reduce((n, c) => n + c.messages.length, 0)
 
@@ -123,6 +129,16 @@ export function AppSettingsPanel({ authed }: { authed: boolean }) {
             <ThemeSelector current={theme} />
           </div>
         </section>
+
+        {/* Memory */}
+        <MemorySection
+          authed={authed}
+          memory={memory}
+          newMemory={newMemory}
+          setNewMemory={setNewMemory}
+          memoryAdded={memoryAdded}
+          setMemoryAdded={setMemoryAdded}
+        />
 
         {/* Integrations */}
         <section className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -246,5 +262,216 @@ function ThemeSelector({ current }: { current: string }) {
         </button>
       ))}
     </div>
+  )
+}
+
+// ─── Memory section ──────────────────────────────────────────────────────────
+
+type MemoryApi = ReturnType<typeof useMemory>
+
+const memorySpring = { type: 'spring' as const, stiffness: 340, damping: 28 }
+
+function MemorySection({
+  authed,
+  memory,
+  newMemory,
+  setNewMemory,
+  memoryAdded,
+  setMemoryAdded,
+}: {
+  authed: boolean
+  memory: MemoryApi
+  newMemory: string
+  setNewMemory: (v: string) => void
+  memoryAdded: boolean
+  setMemoryAdded: (v: boolean) => void
+}) {
+  const [confirmForgetAll, setConfirmForgetAll] = React.useState(false)
+
+  // Sync the mirror once on mount (and whenever the user re-opens settings).
+  React.useEffect(() => {
+    if (authed) void memory.refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const submitManual = async () => {
+    const t = newMemory.trim()
+    if (t.length < 3) return
+    const ok = await memory.add(t)
+    if (ok) {
+      setNewMemory('')
+      setMemoryAdded(true)
+      haptic('light')
+      setTimeout(() => setMemoryAdded(false), 1800)
+    }
+  }
+
+  if (!authed) {
+    return (
+      <section className="overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+          <Brain className="h-4 w-4 text-brand-strong" />
+          <h2 className="text-sm font-semibold">Memory</h2>
+        </div>
+        <p className="px-4 py-3.5 text-xs text-muted-foreground">
+          Sign in to let Azura remember facts about you across chats.
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Brain className="h-4 w-4 text-brand-strong" />
+          <h2 className="text-sm font-semibold">Memory</h2>
+        </div>
+        <span className="text-[11px] text-muted-foreground">
+          {memory.memories.length} saved
+        </span>
+      </div>
+
+      {/* Opt-out toggle */}
+      <div className="flex items-center justify-between px-4 py-3.5">
+        <div>
+          <p className="text-sm font-medium">Memory enabled</p>
+          <p className="text-xs text-muted-foreground">
+            {memory.optedOut
+              ? 'Azura will not read or learn memories.'
+              : 'Azura learns durable facts from your chats and uses them later.'}
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            memory.setOptOut(!memory.optedOut)
+            haptic('light')
+          }}
+          role="switch"
+          aria-checked={!memory.optedOut}
+          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+            memory.optedOut ? 'bg-muted-foreground/40' : 'bg-brand'
+          }`}
+          aria-label="Toggle memory"
+        >
+          <motion.span
+            layout
+            transition={memorySpring}
+            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow ${
+              memory.optedOut ? 'left-0.5' : 'left-[1.375rem]'
+            }`}
+          />
+        </button>
+      </div>
+
+      {memory.optedOut ? null : (
+        <>
+          {/* Manual add */}
+          <div className="flex items-center gap-2 border-t border-border px-4 py-3">
+            {/* Uncontrolled-safe pattern: value+onChange is fine here — this is
+                a plain Latin/persian text field with no composition-critical
+                per-keystroke logic; IME stays intact because we never rewrite
+                user text back into the field. */}
+            <input
+              value={newMemory}
+              onChange={(e) => setNewMemory(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void submitManual()
+                }
+              }}
+              placeholder="Teach Azura something to remember…"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+            <button
+              onClick={() => void submitManual()}
+              disabled={newMemory.trim().length < 3}
+              className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+            >
+              {memoryAdded ? <Check className="h-3.5 w-3.5" /> : 'Save'}
+            </button>
+          </div>
+
+          {/* Memory list */}
+          {memory.memories.length > 0 ? (
+            <div className="max-h-64 overflow-y-auto border-t border-border">
+              <AnimatePresence initial={false}>
+                {memory.memories.map((m) => (
+                  <motion.div
+                    key={m.id}
+                    layout
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -12 }}
+                    transition={memorySpring}
+                    className="group/mem flex items-center gap-2 px-4 py-2.5"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span dir="auto" className="block truncate text-xs text-foreground/90">
+                        {m.content}
+                      </span>
+                      {m.source === 'manual' ? (
+                        <span className="text-[10px] text-muted-foreground">added by you</span>
+                      ) : null}
+                    </span>
+                    <button
+                      onClick={() => {
+                        void memory.forget(m.id)
+                        haptic('medium')
+                      }}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      aria-label="Forget this memory"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          ) : (
+            <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
+              Nothing learned yet — just chat, or teach Azura something above.
+            </p>
+          )}
+
+          {/* Forget all */}
+          {memory.memories.length > 0 ? (
+            <div className="border-t border-border px-4 py-3">
+              {confirmForgetAll ? (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="flex-1 text-muted-foreground">
+                    Forget all {memory.memories.length} memories?
+                  </span>
+                  <button
+                    onClick={() => {
+                      void memory.forgetAll()
+                      setConfirmForgetAll(false)
+                      haptic('heavy')
+                    }}
+                    className="rounded-lg bg-destructive px-3 py-1.5 font-semibold text-destructive-foreground"
+                  >
+                    Forget all
+                  </button>
+                  <button
+                    onClick={() => setConfirmForgetAll(false)}
+                    className="rounded-lg px-3 py-1.5 text-muted-foreground hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmForgetAll(true)}
+                  className="text-xs font-medium text-destructive hover:underline"
+                >
+                  Forget all memories
+                </button>
+              )}
+            </div>
+          ) : null}
+        </>
+      )}
+    </section>
   )
 }

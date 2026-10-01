@@ -23,6 +23,7 @@ import { supabaseAdmin } from '@/supabase/admin'
 import { withPoolFailover, defaultIsRetryable } from '@/lib/gateway/keyPool'
 import { OpenRouterError } from '@/lib/gateway/openrouterClient'
 import { runResearch } from '@/lib/gateway/researchAgent'
+import { renderMemoryBlock, type UserMemory } from '@/lib/gateway/memory'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -33,6 +34,10 @@ const DAILY_CAP = Number(process.env.APP_CHAT_DAILY_CAP || 30)
 
 interface ResearchBody {
   question?: string
+  /** Conversation context for memory extraction grounding. */
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>
+  /** Client toggle: allow reading + auto-extracting long-term memories. */
+  remember?: boolean
 }
 
 function sseFrame(obj: unknown): string {
@@ -91,6 +96,26 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // ─── Memory: load durable facts for the system prompt ──────────────────
+  const remember = body.remember === true
+  let memoryBlock = ''
+  let memoriesForExtraction: UserMemory[] = []
+  if (remember) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('user_memory')
+        .select('id, content, source, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: true })
+      if (error) throw error
+      memoriesForExtraction = (data ?? []) as UserMemory[]
+      memoryBlock = renderMemoryBlock(memoriesForExtraction)
+    } catch (err) {
+      console.error('[AppResearch] memory load failed (continuing without):', err)
+    }
+  }
+  const history = Array.isArray(body.history) ? body.history.slice(-12) : []
+
   // ─── Stream the research pipeline ────────────────────────────────────────
   const encoder = new TextEncoder()
 
@@ -110,6 +135,11 @@ export async function POST(req: NextRequest) {
                 tavilyApiKey: process.env.TAVILY_API_KEY || undefined,
                 model: MODEL_RESEARCH,
                 userQuestion: question,
+                systemExtra: memoryBlock || undefined,
+                history: history.map((m) => ({
+                  role: m.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+                  content: m.content.slice(0, 2000),
+                })),
                 signal: req.signal,
               },
               {
@@ -134,9 +164,24 @@ export async function POST(req: NextRequest) {
             sseFrame({
               type: 'meta',
               content: outcome.result.content,
+              reasoning: outcome.result.reasoning,
               sources: outcome.result.sources,
             })
           )
+          // ─── Memory extraction (fire-and-forget, never blocks) ─────────
+          if (remember && memoriesForExtraction.length < 100) {
+            void extractAndStoreMemories({
+              userId: user.id,
+              apiKey: outcome.key.apiKey,
+              existing: memoriesForExtraction,
+              recentMessages:
+                history.length > 0
+                  ? history
+                  : [{ role: 'user', content: question }],
+            }).catch((err) =>
+              console.error('[AppResearch] memory extraction failed:', err)
+            )
+          }
         } else {
           send(
             sseFrame({
@@ -173,4 +218,34 @@ export async function POST(req: NextRequest) {
       'X-Accel-Buffering': 'no',
     },
   })
+}
+
+// ─── Memory: background extraction + storage ────────────────────────────────
+
+/** Same fire-and-forget pipeline as the chat route. */
+async function extractAndStoreMemories(opts: {
+  userId: string
+  apiKey: string
+  existing: UserMemory[]
+  recentMessages: Array<{ role: 'user' | 'assistant'; content: string }>
+}): Promise<void> {
+  const { extractMemories, dedupeMemories } = await import('@/lib/gateway/memory')
+  const extracted = await extractMemories({
+    apiKey: opts.apiKey,
+    model: process.env.OPENROUTER_MODEL_FAST || 'openrouter/free',
+    recentMessages: opts.recentMessages,
+  })
+  if (extracted.length === 0) return
+
+  const fresh = dedupeMemories(opts.existing, extracted)
+  if (fresh.length === 0) return
+
+  const rows = fresh.map((content) => ({
+    user_id: opts.userId,
+    content,
+    source: 'auto',
+  }))
+
+  const { error } = await supabaseAdmin.from('user_memory').insert(rows)
+  if (error) throw new Error(error.message)
 }

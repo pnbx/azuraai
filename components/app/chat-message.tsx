@@ -29,6 +29,16 @@ import { openExternal } from './external-link'
 
 const spring = { type: 'spring' as const, stiffness: 380, damping: 30 }
 
+/** Compact relative timestamp for message rows. */
+function msgTime(ts?: number): string {
+  if (!ts) return ''
+  const diff = Date.now() - ts
+  if (diff < 60_000) return 'now'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 // ─── Brand avatar ────────────────────────────────────────────────────────────
 
 export function AzuraAvatar({ size = 28 }: { size?: number }) {
@@ -257,6 +267,11 @@ export function AppChatMessage({
         )}
         {!editing && (
           <div className="mt-1 mr-1 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover/msg:opacity-100">
+            {msgTime(message.ts) ? (
+              <span className="mr-1 text-[10px] tabular-nums text-muted-foreground" title={message.ts ? new Date(message.ts).toLocaleString() : undefined}>
+                {msgTime(message.ts)}
+              </span>
+            ) : null}
             <ActionButton
               onClick={async () => {
                 try {
@@ -323,7 +338,14 @@ export function AppChatMessage({
         </div>
 
         {!isStreaming && message.content && !message.failed ? (
-          <AssistantActions content={message.content} onRegenerate={onRegenerate} />
+          <div className="flex items-center gap-1">
+            {msgTime(message.ts) ? (
+              <span className="text-[10px] tabular-nums text-muted-foreground" title={message.ts ? new Date(message.ts).toLocaleString() : undefined}>
+                {msgTime(message.ts)}
+              </span>
+            ) : null}
+            <AssistantActions content={message.content} onRegenerate={onRegenerate} />
+          </div>
         ) : null}
       </div>
     </motion.div>

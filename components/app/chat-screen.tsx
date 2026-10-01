@@ -17,11 +17,10 @@ import {
   Zap,
   Brain,
   Globe,
-  Send,
-  Square,
   RotateCcw,
   Menu,
   ArrowDown,
+  ArrowUp,
   Mic,
   MicOff,
   X,
@@ -39,6 +38,7 @@ import { AppChatMessage, AzuraAvatar } from './chat-message'
 import { ThinkingPanel, StageRail } from './thinking-panel'
 import { ConversationsDrawer } from './drawer'
 import { useVoiceInput } from './voice-input'
+import { useMemory } from './use-memory'
 import { haptic } from './haptics'
 import { useAndroidBackButton } from './use-android-back'
 
@@ -94,6 +94,11 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
 
   // ── Stream ─────────────────────────────────────────────────────────────────
   const { send, cancel, dismissError, state, errorMsg, demoMode: rawDemoMode } = useAppChatStream()
+  // ── Memory ─────────────────────────────────────────────────────────────────
+  // Opt-in via settings toggle: when enabled, every send lets the server
+  // read durable facts into the prompt and quietly learn new ones.
+  const { refresh: refreshMemories, optedOut: memoryOff } = useMemory()
+  const remember = authed && !memoryOff
   // Demo badge tracks the latest assistant reply only — old flagged
   // messages from earlier sessions must not keep the badge alive.
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
@@ -179,7 +184,10 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
   // ── Sending ────────────────────────────────────────────────────────────────
   const runStream = React.useCallback(
     async (history: ChatMsg[], activeMode: ChatMode) => {
-      await send(history, activeMode, {
+      await send(
+        history,
+        activeMode,
+        {
         onContent: (delta, demo) => setMessages((prev) => appendToLast(prev, { content: delta, demo })),
         onReasoning: (delta, demo) => setMessages((prev) => appendToLast(prev, { reasoning: delta, demo })),
         onStage: (stage, demo) => setMessages((prev) => appendToLast(prev, { stages: stage, demo })),
@@ -199,9 +207,14 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
             }
             return next
           }),
-      })
+        },
+        { remember }
+      )
+      // Extraction happens server-side post-meta; pull any new memories
+      // into the local mirror shortly after the exchange completes.
+      if (remember) setTimeout(() => void refreshMemories(), 2500)
     },
-    [send]
+    [send, remember, refreshMemories]
   )
 
   async function handleSend(override?: { text: string; mode: ChatMode; history: ChatMsg[] }) {
@@ -576,6 +589,12 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                     }
                     className="max-h-[140px] w-full resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                   />
+                  {mode === 'research' && !hasText ? (
+                    <span className="ml-2 mb-1.5 hidden shrink-0 items-center gap-1 rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-medium text-brand-strong sm:flex">
+                      <Globe className="h-3 w-3" />
+                      web
+                    </span>
+                  ) : null}
                   {voice.supported ? (
                     <button
                       onClick={() => {
@@ -599,33 +618,57 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                   ) : null}
                 </motion.div>
 
-                {busy ? (
-                  <motion.button
-                    layout
-                    onClick={() => {
+                {/* ChatGPT-style morphing button: muted circle → brand
+                    gradient arrow when there's text → red stop while
+                    streaming. One element, spring-morphed between states. */}
+                <motion.button
+                  layout
+                  onClick={() => {
+                    if (busy) {
                       cancel()
                       haptic('heavy')
-                    }}
-                    whileTap={{ scale: 0.92 }}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-destructive text-destructive-foreground shadow-lg"
-                    aria-label="Stop generating"
-                  >
-                    <Square className="h-4 w-4" />
-                  </motion.button>
-                ) : (
-                  <motion.button
-                    layout
-                    onClick={() => handleSend()}
-                    disabled={!hasText}
-                    whileTap={{ scale: 0.92 }}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand text-white shadow-lg disabled:opacity-40"
-                    aria-label="Send message"
-                  >
-                    <motion.span animate={hasText ? { scale: 1 } : { scale: 0.9 }} className="flex">
-                      <Send className="h-4 w-4" />
-                    </motion.span>
-                  </motion.button>
-                )}
+                    } else {
+                      handleSend()
+                    }
+                  }}
+                  disabled={!busy && !hasText}
+                  whileTap={{ scale: 0.86 }}
+                  transition={spring}
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white transition-[background-color,box-shadow] duration-200 ${
+                    busy
+                      ? 'bg-destructive shadow-lg shadow-destructive/30'
+                      : hasText
+                        ? 'bg-gradient-to-br from-brand-strong to-brand-deep shadow-lg shadow-brand/30'
+                        : 'bg-muted-foreground/25 shadow-none'
+                  }`}
+                  aria-label={busy ? 'Stop generating' : 'Send message'}
+                >
+                  <AnimatePresence mode="wait" initial={false}>
+                    {busy ? (
+                      <motion.span
+                        key="stop"
+                        initial={{ scale: 0.4, opacity: 0, rotate: -90 }}
+                        animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                        exit={{ scale: 0.4, opacity: 0, rotate: 90 }}
+                        transition={{ duration: 0.16, ease: 'easeOut' }}
+                        className="flex"
+                      >
+                        <span className="block h-3 w-3 rounded-[3px] bg-current" />
+                      </motion.span>
+                    ) : (
+                      <motion.span
+                        key="send"
+                        initial={{ scale: 0.5, opacity: 0, y: 5 }}
+                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                        exit={{ scale: 0.5, opacity: 0, y: -5 }}
+                        transition={{ duration: 0.16, ease: 'easeOut' }}
+                        className="flex"
+                      >
+                        <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </motion.button>
               </div>
 
               <p className="pt-1.5 text-center text-[10px] text-muted-foreground">

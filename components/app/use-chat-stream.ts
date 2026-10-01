@@ -24,6 +24,11 @@ export interface ChatMsg {
 export type ChatMode = 'fast' | 'thinking' | 'research'
 export type StreamState = 'idle' | 'connecting' | 'streaming' | 'error'
 
+export interface SendOptions {
+  /** Opt-in to server-side long-term memory (read + auto-extract). */
+  remember?: boolean
+}
+
 export interface StreamHandlers {
   onContent: (delta: string, demo?: boolean) => void
   onReasoning: (delta: string, demo?: boolean) => void
@@ -54,7 +59,12 @@ export function useAppChatStream() {
   }, [])
 
   const send = useCallback(
-    async (history: ChatMsg[], mode: ChatMode, handlers: StreamHandlers): Promise<void> => {
+    async (
+      history: ChatMsg[],
+      mode: ChatMode,
+      handlers: StreamHandlers,
+      options?: SendOptions
+    ): Promise<void> => {
       const controller = new AbortController()
       abortRef.current = controller
       setState('connecting')
@@ -66,9 +76,16 @@ export function useAppChatStream() {
       const endpoint = mode === 'research' ? '/api/app/research' : '/api/app/chat'
       const body =
         mode === 'research'
-          ? { question }
+          ? {
+              question,
+              remember: options?.remember === true,
+              history: history
+                .slice(-12)
+                .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) })),
+            }
           : {
               mode: mode === 'thinking' ? 'thinking' : 'fast',
+              remember: options?.remember === true,
               messages: history.map((m) => ({ role: m.role, content: m.content })),
             }
 
