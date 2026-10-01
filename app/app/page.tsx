@@ -3,7 +3,7 @@ import { AppChatScreen } from '@/components/app/chat-screen'
 import { getServerUser } from '@/lib/auth/server'
 
 export const metadata: Metadata = {
-  title: 'Azura Chat',
+  title: 'Chat',
   description: 'Free AI chat with deep thinking and research modes',
 }
 

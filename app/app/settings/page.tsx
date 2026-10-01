@@ -3,7 +3,7 @@ import { AppSettingsPanel } from '@/components/app/settings-panel'
 import { getServerUser } from '@/lib/auth/server'
 
 export const metadata: Metadata = {
-  title: 'Settings — Azura',
+  title: 'Settings',
   description: 'Theme, integrations and local data controls',
 }
 
