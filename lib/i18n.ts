@@ -254,6 +254,15 @@ export const STRINGS = {
   'settings.newFact': { fa: 'یک واقعیت جدید درباره من…', en: 'A new fact about me…' },
   'settings.addFact': { fa: 'افزودن', en: 'Add' },
   'settings.noFacts': { fa: 'هنوز چیزی ذخیره نشده.', en: 'Nothing remembered yet.' },
+  'composer.attach': { fa: 'پیوست عکس', en: 'Attach images' },
+  'composer.camera': { fa: 'گرفتن عکس', en: 'Take a photo' },
+  'composer.attachmentsFull': {
+    fa: 'حداکثر {n} عکس در هر پیام',
+    en: 'Up to {n} images per message',
+  },
+  'composer.attachmentsCount': { fa: '{n}/{max} عکس', en: '{n}/{max} images' },
+  'composer.send': { fa: 'ارسال پیام', en: 'Send message' },
+  'composer.stop': { fa: 'توقف پاسخ‌گویی', en: 'Stop generating' },
 } as const
 
 /** The union of valid translation keys. */
@@ -265,6 +274,21 @@ export const I18N_KEYS = Object.keys(STRINGS) as I18nKey[]
 /** Look up a translation. Returns the key itself if it is missing. */
 export function translate(locale: Locale, key: I18nKey): string {
   return STRINGS[key]?.[locale] ?? key
+}
+
+/**
+ * Look up a translation and fill `{placeholder}` slots. Persian and English
+ * put numbers and units in different places, so the sentence has to stay
+ * translatable rather than being concatenated at the call site.
+ */
+export function translateWith(
+  locale: Locale,
+  key: I18nKey,
+  values: Record<string, string | number> = {},
+): string {
+  return translate(locale, key).replace(/\{(\w+)\}/g, (match, name: string) =>
+    name in values ? String(values[name]) : match,
+  )
 }
 
 /**

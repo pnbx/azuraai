@@ -19,6 +19,7 @@ import * as React from 'react'
 import {
   resolveLocale,
   translate,
+  translateWith,
   writeStoredLocale,
   type I18nKey,
   type Locale,
@@ -39,6 +40,8 @@ export interface I18nValue {
   locale: Locale
   dir: 'rtl' | 'ltr'
   t: (key: I18nKey) => string
+  /** Like `t`, but fills `{placeholder}` slots — for counts and limits. */
+  tf: (key: I18nKey, values?: Record<string, string | number>) => string
   setLocale: (next: Locale) => void
 }
 
@@ -70,10 +73,15 @@ export function I18nProvider({
   }, [])
 
   const t = React.useCallback((key: I18nKey) => translate(locale, key), [locale])
+  const tf = React.useCallback(
+    (key: I18nKey, values?: Record<string, string | number>) =>
+      translateWith(locale, key, values),
+    [locale]
+  )
 
   const value = React.useMemo<I18nValue>(
-    () => ({ locale, dir: locale === 'fa' ? 'rtl' : 'ltr', t, setLocale }),
-    [locale, t, setLocale]
+    () => ({ locale, dir: locale === 'fa' ? 'rtl' : 'ltr', t, tf, setLocale }),
+    [locale, t, tf, setLocale]
   )
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
@@ -90,6 +98,7 @@ export function useI18n(): I18nValue {
     locale: 'en',
     dir: 'ltr',
     t: (key) => translate('en', key),
+    tf: (key, values) => translateWith('en', key, values),
     setLocale: () => {},
   }
 }

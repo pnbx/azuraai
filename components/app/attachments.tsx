@@ -18,6 +18,7 @@
 
 import * as React from 'react'
 import { ImagePlus, Camera, X, Loader2 } from 'lucide-react'
+import { useI18n } from './i18n-provider'
 import { MAX_IMAGES_PER_MESSAGE } from './conversations'
 
 /** Longest edge after downscale — enough for reading text in a screenshot. */
@@ -174,6 +175,7 @@ export function AttachmentBar({
 }: AttachmentBarProps) {
   const galleryRef = React.useRef<HTMLInputElement>(null)
   const cameraRef = React.useRef<HTMLInputElement>(null)
+  const { tf } = useI18n()
 
   const full = attachments.length >= MAX_ATTACHMENTS
 
@@ -235,8 +237,8 @@ export function AttachmentBar({
           onClick={() => galleryRef.current?.click()}
           disabled={busy || full}
           className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-          aria-label="Attach images"
-          title={full ? `Up to ${MAX_ATTACHMENTS} images per message` : 'Attach images'}
+          aria-label={tf('composer.attach')}
+          title={full ? tf('composer.attachmentsFull', { n: MAX_ATTACHMENTS }) : tf('composer.attach')}
         >
           {busy && attachments.length > 0 ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -248,14 +250,14 @@ export function AttachmentBar({
           onClick={() => cameraRef.current?.click()}
           disabled={busy || full}
           className="flex h-8 w-8 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-          aria-label="Take a photo"
-          title={full ? `Up to ${MAX_ATTACHMENTS} images per message` : 'Take a photo'}
+          aria-label={tf('composer.camera')}
+          title={full ? tf('composer.attachmentsFull', { n: MAX_ATTACHMENTS }) : tf('composer.camera')}
         >
           <Camera className="h-4 w-4" />
         </button>
         {attachments.length > 0 ? (
           <span className="ml-1 text-[10px] text-muted-foreground">
-            {attachments.length}/{MAX_ATTACHMENTS} images
+            {tf('composer.attachmentsCount', { n: attachments.length, max: MAX_ATTACHMENTS })}
           </span>
         ) : null}
         {error ? (

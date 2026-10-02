@@ -895,7 +895,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                         ? 'bg-gradient-to-br from-brand-strong to-brand-deep shadow-lg shadow-brand/30'
                         : 'bg-muted-foreground/25 shadow-none'
                   }`}
-                  aria-label={busy ? 'Stop generating' : 'Send message'}
+                  aria-label={busy ? t('composer.stop') : t('composer.send')}
                 >
                   <AnimatePresence mode="wait" initial={false}>
                     {busy ? (

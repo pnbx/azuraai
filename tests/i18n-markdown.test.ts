@@ -14,6 +14,7 @@ import {
   I18N_KEYS,
   STRINGS,
   translate,
+  translateWith,
 } from '@/lib/i18n'
 import {
   splitSegments,
@@ -141,5 +142,26 @@ describe('markdown list parsing', () => {
   it('leaves text undefined for non-task items', () => {
     const nodes = parseList(['- plain'])!
     expect(nodes[0].checked).toBeUndefined()
+  })
+})
+
+describe('translateWith', () => {
+  it('fills numeric placeholders in both locales', () => {
+    expect(translateWith('fa', 'composer.attachmentsCount', { n: 2, max: 4 })).toBe('2/4 عکس')
+    expect(translateWith('en', 'composer.attachmentsCount', { n: 2, max: 4 })).toBe('2/4 images')
+  })
+
+  it('keeps the sentence translatable instead of concatenating at the call site', () => {
+    // Persian puts the number first, English puts it in a trailing noun phrase.
+    expect(translateWith('fa', 'composer.attachmentsFull', { n: 4 })).toBe('حداکثر 4 عکس در هر پیام')
+    expect(translateWith('en', 'composer.attachmentsFull', { n: 4 })).toBe('Up to 4 images per message')
+  })
+
+  it('leaves unknown placeholders intact rather than printing undefined', () => {
+    expect(translateWith('en', 'composer.attachmentsCount', { n: 1 })).toContain('{max}')
+  })
+
+  it('works with no values at all', () => {
+    expect(translateWith('en', 'composer.send')).toBe('Send message')
   })
 })
