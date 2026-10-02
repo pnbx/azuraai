@@ -25,6 +25,18 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        // Declared (not inline-created) because a NamedDomainObjectContainer
+        // cannot create() a config from inside buildTypes. Fields are only set
+        // when the keystore is present so configuration still succeeds without
+        // signing material.
+        release {
+            if (file('release.keystore').exists()) {
+                storeFile file('release.keystore')
+                storePassword System.getenv('AZURA_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('AZURA_KEY_ALIAS')
+                keyPassword System.getenv('AZURA_KEY_PASSWORD')
+            }
+        }
     }
     buildTypes {
         debug {
@@ -35,16 +47,11 @@ android {
             // Kotlin sources are compiled to the same JVM bytecode level as
             // the rest of the app so they can be called from Java.
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            // CI signing: the workflow decodes AZURA_KEYSTORE_B64 to this path.
-            // Falls back to debug signing locally / when secrets are absent.
-            def ksFile = file('release.keystore')
-            if (ksFile.exists()) {
-                signingConfig signingConfigs.create {
-                    storeFile ksFile
-                    storePassword System.getenv('AZURA_KEYSTORE_PASSWORD')
-                    keyAlias System.getenv('AZURA_KEY_ALIAS')
-                    keyPassword System.getenv('AZURA_KEY_PASSWORD')
-                }
+            // CI signing: the workflow decodes AZURA_KEYSTORE_B64 to this path
+            // and passes the three env vars. Falls back to debug signing
+            // locally / when the secrets are absent.
+            if (file('release.keystore').exists()) {
+                signingConfig signingConfigs.release
             }
         }
     }

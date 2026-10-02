@@ -87,6 +87,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <ul className="space-y-2 text-sm text-mist-400">
                 <li><Link className="transition hover:text-white" href="/models">مدل‌ها</Link></li>
                 <li><Link className="transition hover:text-white" href="/chat">چت هوشمند</Link></li>
+                <li><Link className="transition hover:text-white" href="/download">دانلود اپلیکیشن</Link></li>
                 <li><Link className="transition hover:text-white" href="/#pricing">تعرفه‌ها</Link></li>
               </ul>
             </div>

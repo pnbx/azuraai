@@ -23,7 +23,13 @@ export type IconName =
   | "spark"
   | "lock"
   | "globe"
-  | "copy";
+  | "copy"
+  | "smartphone"
+  | "download"
+  | "image"
+  | "mic"
+  | "share"
+  | "book";
 
 export default function Icon({ name, className = "", size = 20 }: IconProps) {
   const common = {
@@ -154,6 +160,49 @@ export default function Icon({ name, className = "", size = 20 }: IconProps) {
         <svg {...common}>
           <rect x="9" y="9" width="11" height="11" rx="2" />
           <path d="M5 15V5a2 2 0 0 1 2-2h8" />
+        </svg>
+      );
+    case "smartphone":
+      return (
+        <svg {...common}>
+          <rect x="6" y="2" width="12" height="20" rx="3" />
+          <path d="M11 18.5h2" />
+        </svg>
+      );
+    case "download":
+      return (
+        <svg {...common}>
+          <path d="M12 3v12m0 0 5-5m-5 5-5-5" />
+          <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+        </svg>
+      );
+    case "image":
+      return (
+        <svg {...common}>
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <circle cx="8.5" cy="9.5" r="1.5" />
+          <path d="m4 17 4.5-4.5 3 3L15 12l5 5" />
+        </svg>
+      );
+    case "mic":
+      return (
+        <svg {...common}>
+          <rect x="9" y="3" width="6" height="11" rx="3" />
+          <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+        </svg>
+      );
+    case "share":
+      return (
+        <svg {...common}>
+          <path d="M12 3v13m0-13 4 4m-4-4L8 7" />
+          <path d="M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5" />
+        </svg>
+      );
+    case "book":
+      return (
+        <svg {...common}>
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5Z" />
+          <path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5A2.5 2.5 0 0 1 4 20.5Z" />
         </svg>
       );
   }

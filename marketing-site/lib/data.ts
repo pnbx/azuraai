@@ -327,6 +327,7 @@ export const navLinks = [
   { href: "/", label: "خانه" },
   { href: "/models", label: "مدل‌ها" },
   { href: "/chat", label: "چت هوشمند" },
+  { href: "/download", label: "اپلیکیشن" },
   { href: "/#pricing", label: "تعرفه‌ها" },
   { href: "/#faq", label: "سؤالات" },
 ];
