@@ -1,0 +1,3 @@
+-- Azura Seed File
+-- Placeholder: Add seed data for development/testing here
+-- Example: INSERT INTO providers (name, ...) VALUES (...);
