@@ -165,7 +165,7 @@ function ConversationRow({
               onTogglePin()
             }}
             className="flex h-7 w-7 items-center justify-center rounded-lg bg-sidebar text-muted-foreground shadow-sm hover:text-foreground"
-            aria-label={conv.pinned ? 'Unpin conversation' : 'Pin conversation'}
+            aria-label={conv.pinned ? t('drawer.unpin') : t('drawer.pin')}
           >
             {conv.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
           </button>

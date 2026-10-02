@@ -20,6 +20,7 @@ import {
   splitSegments,
   parseList,
 } from '@/components/app/markdown-parsers'
+import { SYSTEM_PROMPT } from '@/lib/app-system-prompt'
 
 describe('locale detection', () => {
   it('maps Persian and Persian-script tags to fa', () => {
@@ -196,5 +197,28 @@ describe('translateWith', () => {
     for (const key of iconOnly) {
       expect([key, /[A-Za-z]{3,}/.test(STRINGS[key].fa)]).toEqual([key, false])
     }
+  })
+})
+describe('chat system prompt', () => {
+  it('forbids splicing English words into Persian phrases', () => {
+    // Observed in production: "کاربردهایtypical", "خیار finely chopped".
+    // The rule alone did not stop it, so the few-shot examples must stay.
+    expect(SYSTEM_PROMPT).toMatch(/splice/i)
+    expect(SYSTEM_PROMPT).toMatch(/کاربردهایtypical/)
+  })
+
+  it('demonstrates the Persian table style rather than only describing it', () => {
+    expect(SYSTEM_PROMPT).toContain('| ویژگی | پایتون | راست |')
+    expect(SYSTEM_PROMPT).toMatch(/۱۵۰,۰۰۰/)
+  })
+
+  it('asks for markdown tables and RTL-safe formatting', () => {
+    expect(SYSTEM_PROMPT).toMatch(/markdown tables/i)
+    expect(SYSTEM_PROMPT).toMatch(/Never repeat the question back/)
+  })
+
+  it('bans the filler and emoji that made answers look unprofessional', () => {
+    expect(SYSTEM_PROMPT).toMatch(/Great question/)
+    expect(SYSTEM_PROMPT).toMatch(/emoji/i)
   })
 })

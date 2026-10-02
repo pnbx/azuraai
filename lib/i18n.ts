@@ -276,6 +276,8 @@ export const STRINGS = {
   'drawer.close': { fa: 'بستن منو', en: 'Close menu' },
   'drawer.clearSearch': { fa: 'پاک کردن جست‌وجو', en: 'Clear search' },
   'drawer.collapse': { fa: 'بستن فهرست', en: 'Collapse sidebar' },
+  'drawer.pin': { fa: 'سنجاق کردن گفتگو', en: 'Pin conversation' },
+  'drawer.unpin': { fa: 'برداشتن سنجاق', en: 'Unpin conversation' },
   'markdown.copyCode': { fa: 'کپی کد', en: 'Copy code' },
   'markdown.copied': { fa: 'کپی شد ✓', en: 'Copied ✓' },
   'settings.toggleMemory': { fa: 'روشن/خاموش کردن حافظه', en: 'Toggle memory' },

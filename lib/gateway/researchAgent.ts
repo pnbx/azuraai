@@ -318,7 +318,13 @@ export async function runResearch(
         'the key findings, then a markdown table when you are comparing more ' +
         'than two things. Use ## headings for distinct sections. Every ' +
         'non-obvious claim needs a [n] citation. Do not mention the sources ' +
-        'list itself — just cite. If sources disagree, say so explicitly.' +
+        'list itself — just cite. If sources disagree, say so explicitly.\n' +
+        'When the question is in Persian, answer in fluent Persian with Persian ' +
+        'digits (۰۱۲۳۴۵۶۷۸۹) and punctuation (، ؛ «»). Never splice an English word ' +
+        'into a Persian phrase — translate it or leave the whole term in Latin ' +
+        'script on its own. Do not use emoji. Keep source titles in their ' +
+        'original language inside the citation list, but write your own prose ' +
+        'fully in Persian.' +
         (opts.systemExtra ? `\n\n${opts.systemExtra}` : ''),
     },
     ...(opts.history ?? []),
