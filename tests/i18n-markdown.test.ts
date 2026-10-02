@@ -164,4 +164,37 @@ describe('translateWith', () => {
   it('works with no values at all', () => {
     expect(translateWith('en', 'composer.send')).toBe('Send message')
   })
+
+  it('has no duplicate keys, which would silently shadow a translation', () => {
+    // `as const` on an object literal turns a repeat key into a compile
+    // error, but only if the duplicate is still in the literal — asserting
+    // the invariant here documents the failure mode.
+    expect(new Set(I18N_KEYS).size).toBe(I18N_KEYS.length)
+  })
+
+  it('keeps the Persian side of every control label free of English', () => {
+    // These are icon-only buttons: the accessible name is the label, so an
+    // untranslated entry means a Persian user hears English.
+    const iconOnly = [
+      'composer.attach',
+      'composer.camera',
+      'composer.send',
+      'composer.stop',
+      'chat.openConversations',
+      'chat.exportCurrent',
+      'chat.scrollToLatest',
+      'chat.dismissError',
+      'drawer.rename',
+      'drawer.deleteConversation',
+      'drawer.close',
+      'drawer.clearSearch',
+      'drawer.collapse',
+      'markdown.copyCode',
+      'settings.toggleMemory',
+      'settings.forgetFact',
+    ] as const
+    for (const key of iconOnly) {
+      expect([key, /[A-Za-z]{3,}/.test(STRINGS[key].fa)]).toEqual([key, false])
+    }
+  })
 })

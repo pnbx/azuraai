@@ -589,7 +589,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
             <button
               onClick={() => setDrawerOpen(true)}
               className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted lg:hidden"
-              aria-label="Open conversations"
+              aria-label={t('chat.openConversations')}
             >
               <Menu className="h-4.5 w-4.5" />
             </button>
@@ -610,8 +610,8 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
               onClick={handleExport}
               disabled={messages.length === 0}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-              aria-label="Export conversation"
-              title="Export conversation"
+              aria-label={t('chat.exportCurrent')}
+              title={t('chat.exportCurrent')}
             >
               <Download className="h-4 w-4" />
             </button>
@@ -716,7 +716,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                   exit={{ opacity: 0, y: 8 }}
                   onClick={() => scrollToBottom()}
                   className="absolute bottom-4 left-1/2 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-card shadow-lg"
-                  aria-label="Scroll to latest"
+                  aria-label={t('chat.scrollToLatest')}
                 >
                   <ArrowDown className="h-4 w-4" />
                 </motion.button>
@@ -744,7 +744,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                   <RotateCcw className="mr-1 inline h-3.5 w-3.5" />
                   Retry
                 </button>
-                <button onClick={dismissError} aria-label="Dismiss error">
+                <button onClick={dismissError} aria-label={t('chat.dismissError')}>
                   <X className="h-4 w-4" />
                 </button>
               </motion.div>

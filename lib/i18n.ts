@@ -263,6 +263,19 @@ export const STRINGS = {
   'composer.attachmentsCount': { fa: '{n}/{max} عکس', en: '{n}/{max} images' },
   'composer.send': { fa: 'ارسال پیام', en: 'Send message' },
   'composer.stop': { fa: 'توقف پاسخ‌گویی', en: 'Stop generating' },
+  'chat.openConversations': { fa: 'باز کردن گفتگوها', en: 'Open conversations' },
+  'chat.exportCurrent': { fa: 'خروجی گرفتن از این گفتگو', en: 'Export conversation' },
+  'chat.scrollToLatest': { fa: 'رفتن به آخرین پیام', en: 'Scroll to latest' },
+  'chat.dismissError': { fa: 'بستن خطا', en: 'Dismiss error' },
+  'drawer.rename': { fa: 'تغییر نام گفتگو', en: 'Rename conversation' },
+  'drawer.deleteConversation': { fa: 'حذف گفتگو', en: 'Delete conversation' },
+  'drawer.close': { fa: 'بستن منو', en: 'Close menu' },
+  'drawer.clearSearch': { fa: 'پاک کردن جست‌وجو', en: 'Clear search' },
+  'drawer.collapse': { fa: 'بستن فهرست', en: 'Collapse sidebar' },
+  'markdown.copyCode': { fa: 'کپی کد', en: 'Copy code' },
+  'markdown.copied': { fa: 'کپی شد ✓', en: 'Copied ✓' },
+  'settings.toggleMemory': { fa: 'روشن/خاموش کردن حافظه', en: 'Toggle memory' },
+  'settings.forgetFact': { fa: 'پاک کردن این خاطره', en: 'Forget this memory' },
 } as const
 
 /** The union of valid translation keys. */

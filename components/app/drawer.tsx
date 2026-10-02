@@ -98,6 +98,7 @@ function ConversationRow({
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
   const [renaming, setRenaming] = React.useState(false)
+  const { t } = useI18n()
   const [draft, setDraft] = React.useState(conv.title)
 
   return (
@@ -175,7 +176,7 @@ function ConversationRow({
               setRenaming(true)
             }}
             className="flex h-7 w-7 items-center justify-center rounded-lg bg-sidebar text-muted-foreground shadow-sm hover:text-foreground"
-            aria-label="Rename conversation"
+            aria-label={t('drawer.rename')}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
@@ -188,7 +189,7 @@ function ConversationRow({
               setConfirmDelete(true)
             }}
             className="flex h-7 w-7 items-center justify-center rounded-lg bg-sidebar text-muted-foreground shadow-sm hover:text-destructive"
-            aria-label="Delete conversation"
+            aria-label={t('drawer.deleteConversation')}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -243,7 +244,7 @@ export function ConversationsDrawer(props: DrawerProps) {
         <button
           onClick={() => onOpenChange(false)}
           className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground hover:bg-sidebar-accent lg:hidden"
-          aria-label="Close menu"
+          aria-label={t('drawer.close')}
         >
           <X className="h-4 w-4" />
         </button>
@@ -267,7 +268,7 @@ export function ConversationsDrawer(props: DrawerProps) {
                 setQuery('')
                 if (searchRef.current) searchRef.current.value = ''
               }}
-              aria-label="Clear search"
+              aria-label={t('drawer.clearSearch')}
             >
               <X className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
@@ -332,7 +333,7 @@ export function ConversationsDrawer(props: DrawerProps) {
         <button
           onClick={() => onCollapsedChange?.(true)}
           className="absolute left-[17.5rem] top-[4.2rem] z-30 hidden h-6 w-6 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground lg:flex"
-          aria-label="Collapse sidebar"
+          aria-label={t('drawer.collapse')}
         >
           <PanelLeft className="h-3.5 w-3.5" />
         </button>

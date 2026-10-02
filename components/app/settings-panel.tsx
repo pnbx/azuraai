@@ -396,7 +396,7 @@ function MemorySection({
           className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
             memory.optedOut ? 'bg-muted-foreground/40' : 'bg-brand'
           }`}
-          aria-label="Toggle memory"
+          aria-label={t('settings.toggleMemory')}
         >
           <motion.span
             layout
@@ -465,7 +465,7 @@ function MemorySection({
                         haptic('medium')
                       }}
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      aria-label="Forget this memory"
+                      aria-label={t('settings.forgetFact')}
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>

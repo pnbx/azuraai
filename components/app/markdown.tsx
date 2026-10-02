@@ -24,6 +24,7 @@ import {
   parseList,
   type ListNode,
 } from './markdown-parsers'
+import { useI18n } from './i18n-provider'
 
 // ─── Inline formatting ───────────────────────────────────────────────────────
 
@@ -162,6 +163,7 @@ function highlightCode(code: string): React.ReactNode[] {
 
 function CodeBlock({ code, lang, live }: { code: string; lang?: string; live?: boolean }) {
   const [copied, setCopied] = React.useState(false)
+  const { t } = useI18n()
 
   const copy = async () => {
     try {
@@ -183,10 +185,10 @@ function CodeBlock({ code, lang, live }: { code: string; lang?: string; live?: b
         <button
           onClick={copy}
           className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Copy code"
+          aria-label={t('markdown.copyCode')}
         >
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-          {copied ? 'Copied' : 'Copy'}
+          {copied ? t('markdown.copied') : t('markdown.copyCode')}
         </button>
       </div>
       <pre>
