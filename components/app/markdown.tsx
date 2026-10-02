@@ -25,6 +25,7 @@ import {
   type ListNode,
 } from './markdown-parsers'
 import { useI18n } from './i18n-provider'
+import { renderMath, looksLikeMath } from '@/lib/math-render'
 
 // ─── Inline formatting ───────────────────────────────────────────────────────
 
@@ -103,16 +104,30 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
         </mark>
       )
     } else if (token.startsWith('$$')) {
+      const latex = token.slice(2, -2)
+      const html = renderMath(latex, { displayMode: true })
+      // Fall back to the raw source when KaTeX cannot typeset it — a readable
+      // formula beats a red parse error, and beats losing the content.
       nodes.push(
-        <span key={key} className="md-math md-math-block" dir="ltr">
-          {token.slice(2, -2)}
-        </span>
+        html ? (
+          <span key={key} className="md-math-block" dir="ltr" dangerouslySetInnerHTML={{ __html: html }} />
+        ) : (
+          <span key={key} className="md-math md-math-fallback" dir="ltr">
+            {latex}
+          </span>
+        )
       )
     } else if (token.startsWith('$')) {
+      const latex = token.slice(1, -1)
+      // Only typeset when it actually looks like maths: "$5 and $10" is a
+      // price, and the model writes prices constantly in Persian answers.
+      const html = looksLikeMath(latex) ? renderMath(latex) : null
       nodes.push(
-        <span key={key} className="md-math" dir="ltr">
-          {token.slice(1, -1)}
-        </span>
+        html ? (
+          <span key={key} className="md-math" dir="ltr" dangerouslySetInnerHTML={{ __html: html }} />
+        ) : (
+          <span key={key}>{latex}</span>
+        )
       )
     }
     last = m.index + token.length
@@ -332,6 +347,32 @@ function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
   )
 }
 
+/**
+ * Display maths. Typeset with KaTeX so fractions, radicals, sums and integrals
+ * render as real mathematics with proper spacing and glyphs, scrolling
+ * horizontally on a phone when the formula is wider than the screen.
+ */
+function MathBlock({ latex }: { latex: string }) {
+  const html = React.useMemo(() => renderMath(latex, { displayMode: true }), [latex])
+  if (!html) {
+    // Untypesettable: show the source in a readable block rather than dropping it.
+    return (
+      <pre className="md-math-block md-math-fallback" dir="ltr">
+        {latex}
+      </pre>
+    )
+  }
+  return (
+    <div
+      className="md-math-block"
+      dir="ltr"
+      // KaTeX output is generated locally from the model's own LaTeX with
+      // `trust: false`, so no raw HTML from the network can reach here.
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  )
+}
+
 export function Markdown({ text, className = '' }: { text: string; className?: string }) {
   const segments = React.useMemo(() => splitSegments(text), [text])
 
@@ -341,9 +382,7 @@ export function Markdown({ text, className = '' }: { text: string; className?: s
         seg.fence ? (
           <CodeBlock key={si} code={seg.fence.code} lang={seg.fence.lang} live={seg.fence.live} />
         ) : seg.math !== undefined ? (
-          <pre key={si} className="md-math-block" dir="ltr">
-            {seg.math}
-          </pre>
+          <MathBlock key={si} latex={seg.math} />
         ) : (
           <TextBlocks key={si} text={seg.text} keyPrefix={`s${si}`} />
         )

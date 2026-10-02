@@ -1,4 +1,8 @@
 @import "tailwindcss";
+/* KaTeX brings the maths fonts (KaTeX_Main, KaTeX_Math) and the layout rules
+   that position radicals, fractions and scripts. Imported here so the fonts
+   load in the same round trip as the stylesheet. */
+@import "katex/dist/katex.min.css";
 
 /*
  * Azura design system — APP palette
@@ -480,25 +484,48 @@ button:not(:disabled):active {
   font-weight: 600;
 }
 
-/* LaTeX is rendered as readable monospace rather than dropped, since the app
-   ships no KaTeX bundle. Always LTR — maths is not mirrored in RTL. */
+/* LaTeX is typeset by KaTeX, which brings its own fonts and metrics. Always
+   LTR — maths is not mirrored in RTL, even inside a Persian paragraph. */
 .md-math {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.92em;
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: 0.35em;
-  padding: 0.05em 0.35em;
-  white-space: nowrap;
   unicode-bidi: isolate;
+  /* KaTeX renders at a fixed em size; nudge it so inline maths does not
+     look larger than the surrounding Persian text. */
+  font-size: 0.98em;
+  padding: 0 0.1em;
 }
 .md-math-block {
   display: block;
   overflow-x: auto;
+  overflow-y: hidden;
   text-align: center;
   unicode-bidi: isolate;
+  padding: 0.85rem 0.25rem;
+  margin: 0.35rem 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Shown only when KaTeX cannot typeset the formula, so the maths is still
+   readable instead of being replaced by a red parse error. */
+.md-math-fallback {
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.88rem;
   line-height: 1.6;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.7rem 0.85rem;
+}
+
+/* KaTeX ships light-theme colours; in dark mode invert the few rules that
+   hardcode a text colour so fractions and operators stay legible. */
+.dark .katex {
+  color: inherit;
+}
+.dark .katex .mord.text {
+  color: inherit;
 }
 .md-inline-code {
   background: var(--code-bg);
