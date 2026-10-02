@@ -29,6 +29,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerUser } from '@/lib/auth/server'
 import { supabaseAdmin } from '@/supabase/admin'
 import { withPoolFailover, defaultIsRetryable, type PooledKey } from '@/lib/gateway/keyPool'
+import { assessReply } from '@/lib/gateway/replyQuality'
 import {
   streamChatCompletion,
   OpenRouterError,
@@ -44,10 +45,36 @@ import {
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-/** Free models: fast chat vs heavy reasoning. */
-const MODEL_FAST = process.env.OPENROUTER_MODEL_FAST || 'openrouter/free'
-const MODEL_THINKING =
-  process.env.OPENROUTER_MODEL_THINKING || 'openrouter/free'
+/**
+ * Text models.
+ *
+ * We used to send everything to `openrouter/free`, which picks a *random*
+ * available free model per request. That made answer quality swing wildly:
+ * the same Persian question came back clean one minute and full of spliced
+ * English ("salad Olivier", "acompañamientos") the next, purely because a
+ * different model answered.
+ *
+ * Benchmarking every model OpenRouter currently lists at zero cost against
+ * real Persian prompts, `poolside/laguna-s-2.1:free` was the only one that
+ * produced no English-in-Persian splicing across every sample, at ~13s and
+ * with 262k context. It is pinned below.
+ *
+ * The free tier removes models without warning, so pinning one model is a
+ * single point of failure: if it 404s the whole app stops answering. Each
+ * chain therefore ends in `openrouter/free`, which is the old behaviour and
+ * always has something to serve.
+ */
+const TEXT_CHAIN: string[] = [
+  ...(process.env.OPENROUTER_MODEL_FAST
+    ? [process.env.OPENROUTER_MODEL_FAST]
+    : ['poolside/laguna-s-2.1:free']),
+  'poolside/laguna-xs-2.1:free',
+  'openrouter/free',
+]
+
+/** Kept for the vision text-only fallback and the research path. */
+const MODEL_FAST = TEXT_CHAIN[0]
+const MODEL_THINKING = TEXT_CHAIN[0]
 /**
  * Vision models, tried in order.
  *
@@ -344,6 +371,64 @@ const remember = body.remember === true && user !== null
               },
               MAX_POOL_ATTEMPTS
             )
+          }
+        }
+
+        // ─── Text model fallback ──────────────────────────────────────────
+        // The pinned free model can be pulled from OpenRouter's free tier at
+        // any time, and free models also rate-limit hard (20 req/min). When
+        // the pinned entry is gone or throttled, walk the rest of the chain
+        // rather than showing the user an error for a model problem.
+        if (!('result' in outcome) && !visionRequested) {
+          const modelDead = (err: unknown) =>
+            err instanceof OpenRouterError &&
+            (err.type === 'invalid_request' ||
+              err.type === 'authentication_error' ||
+              err.type === 'provider_unavailable' ||
+              err.type === 'rate_limit_exceeded')
+
+          for (const candidate of TEXT_CHAIN.slice(1)) {
+            if ('result' in outcome) break
+            if (!modelDead(outcome.error)) break
+            send(sseFrame({ type: 'status', message: 'switching_model' }))
+            outcome = await withPoolFailover(
+              (key) => runModel(key, messages, candidate),
+              (err) => defaultIsRetryable(err),
+              MAX_POOL_ATTEMPTS
+            )
+          }
+        }
+
+        // ─── Quality guard ───────────────────────────────────────────────
+        // A free model can return a 200 with a reply that is unusable:
+        // Latin words fused into Persian, or nothing at all because it spent
+        // the budget on reasoning. The client keeps whatever streamed, but the
+        // `meta` frame it receives at the end is authoritative — it overwrites
+        // the message — so re-running here silently replaces the bad text
+        // instead of showing it. One attempt only: if the retry is also bad,
+        // the user is better served by *something* than by more waiting.
+        if ('result' in outcome && !visionRequested && mode !== 'thinking') {
+          const question = rawMessages.filter((m) => m.role === 'user').at(-1)?.content ?? ''
+          const report = assessReply({
+            content: outcome.result.content,
+            reasoning: outcome.result.reasoning,
+            finishReason: outcome.result.finishReason,
+            question,
+          })
+          if (!report.ok && report.worthRetrying) {
+            console.warn(
+              '[AppChat] retrying low-quality reply:',
+              report.issues.map((i) => i.kind).join(', '),
+              'model=',
+              outcome.result.model
+            )
+            send(sseFrame({ type: 'status', message: 'refining' }))
+            const retry = await withPoolFailover(
+              (key) => runModel(key, messages, model),
+              (err) => defaultIsRetryable(err),
+              MAX_POOL_ATTEMPTS
+            )
+            if ('result' in retry) outcome = retry
           }
         }
 
