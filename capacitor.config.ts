@@ -21,7 +21,9 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: false,
     captureInput: true,
-    webContentsDebuggingEnabled: false,
+    // Debug builds only: lets `scripts/` CDP helpers inspect the live DOM on
+    // a connected device. Disable for release so the WebView stays closed.
+    webContentsDebuggingEnabled: !!process.env.AZURA_WEBVIEW_DEBUG,
   },
   plugins: {
     // Android 15 forces edge-to-edge: without inset handling the app
