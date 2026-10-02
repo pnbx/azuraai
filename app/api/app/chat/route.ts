@@ -48,9 +48,23 @@ export const maxDuration = 60
 const MODEL_FAST = process.env.OPENROUTER_MODEL_FAST || 'openrouter/free'
 const MODEL_THINKING =
   process.env.OPENROUTER_MODEL_THINKING || 'openrouter/free'
-/** Vision-capable free model. Free tiers churn, so this stays overridable. */
-const MODEL_VISION =
-  process.env.OPENROUTER_MODEL_VISION || 'google/gemini-2.0-flash-exp:free'
+/**
+ * Vision models, tried in order.
+ *
+ * OpenRouter's free tier churns constantly — a model that accepted images
+ * last week can 404 today. Rather than pinning one guess, we keep a short
+ * candidate chain and walk it until one accepts the payload, then fall back
+ * to a text-only answer. `OPENROUTER_MODEL_VISION` overrides the whole chain.
+ */
+const VISION_MODELS: string[] = (
+  process.env.OPENROUTER_MODEL_VISION
+    ? [process.env.OPENROUTER_MODEL_VISION]
+    : [
+        'google/gemini-2.0-flash-exp:free',
+        'meta-llama/llama-3.2-11b-vision-instruct:free',
+        'google/gemma-3-4b-it:free',
+      ]
+).filter(Boolean)
 const DAILY_CAP = Number(process.env.APP_CHAT_DAILY_CAP || 30)
 const MAX_POOL_ATTEMPTS = 4
 
@@ -163,10 +177,14 @@ export async function POST(req: NextRequest) {
   })
 
   const visionRequested = imagesByIndex.size > 0
-  // Vision needs a multimodal model, so it overrides the mode model. If the
-  // vision model turns out to be dead we fall back to text-only below rather
+  // Vision needs a multimodal model, so it overrides the mode model. If every
+  // candidate turns out to be dead we fall back to text-only below rather
   // than failing the user's message outright.
-  const model = visionRequested ? MODEL_VISION : mode === 'thinking' ? MODEL_THINKING : MODEL_FAST
+  const model = visionRequested
+    ? VISION_MODELS[0]
+    : mode === 'thinking'
+      ? MODEL_THINKING
+      : MODEL_FAST
 
   // ─── Memory: load durable facts for the system prompt ──────────────────
   let memoryBlock = ''
@@ -281,17 +299,26 @@ export async function POST(req: NextRequest) {
         )
 
         // ─── Vision fallback ────────────────────────────────────────────────
-        // Free multimodal models disappear without warning. If the vision
-        // model rejected the payload, retry text-only on the normal model so
-        // the user still gets an answer (and a note that images were skipped)
-        // instead of a hard failure.
+        // Walk the remaining vision candidates, then give up on images
+        // entirely and answer from text so the user still gets a reply.
         if (!('result' in outcome) && visionRequested) {
-          const visionDead =
-            outcome.error instanceof OpenRouterError &&
-            (outcome.error.type === 'invalid_request' ||
-              outcome.error.type === 'authentication_error' ||
-              outcome.error.type === 'provider_unavailable')
-          if (visionDead) {
+          const modelDead = (err: unknown) =>
+            err instanceof OpenRouterError &&
+            (err.type === 'invalid_request' ||
+              err.type === 'authentication_error' ||
+              err.type === 'provider_unavailable')
+
+          for (const candidate of VISION_MODELS.slice(1)) {
+            if ('result' in outcome) break
+            if (!modelDead(outcome.error)) break
+            outcome = await withPoolFailover(
+              (key) => runModel(key, messages, candidate),
+              (err) => defaultIsRetryable(err),
+              MAX_POOL_ATTEMPTS
+            )
+          }
+
+          if (!('result' in outcome) && modelDead(outcome.error)) {
             send(sseFrame({ type: 'status', message: 'vision_fallback' }))
             const textOnly = messages.map((m) => ({ ...m, images: undefined }))
             const fallbackModel =
