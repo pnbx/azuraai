@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
     namespace = "ir.azuraai.app"
@@ -31,6 +32,8 @@ android {
         }
         release {
             minifyEnabled false
+            // Kotlin sources are compiled to the same JVM bytecode level as
+            // the rest of the app so they can be called from Java.
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             // CI signing: the workflow decodes AZURA_KEYSTORE_B64 to this path.
             // Falls back to debug signing locally / when secrets are absent.
@@ -66,6 +69,14 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+kotlin {
+    compilerOptions {
+        // Must match the Java target AGP derives (21), or the build fails
+        // JVM-target validation before it reaches the compiler.
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+    }
+}
 
 try {
     def servicesJSON = file('google-services.json')

@@ -30,6 +30,7 @@ import { Markdown } from './markdown'
 import { ReasoningText } from './thinking-panel'
 import { openExternal } from './external-link'
 import { MessageImages } from './attachments'
+import { AzuraMark, AzuraLogoAnimated } from '@/components/brand/logo'
 import { copyText, downloadTextFile, exportFilename } from './text-utils'
 import { haptic } from './haptics'
 
@@ -50,23 +51,11 @@ function msgTime(ts?: number): string {
 export function AzuraAvatar({ size = 28 }: { size?: number }) {
   return (
     <span
-      className="brand-orb inline-flex shrink-0 items-center justify-center rounded-full"
-      style={{ width: size, height: size }}
+      className="brand-orb inline-flex shrink-0 items-center justify-center rounded-xl"
+      style={{ width: size * 1.5, height: size }}
       aria-hidden
     >
-      {/* The four-point spark from the logo mark */}
-      <svg
-        width={size * 0.55}
-        height={size * 0.55}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="white"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M12 3l1.9 5.8L20 12l-6.1 3.2L12 21l-1.9-5.8L4 12l6.1-3.2L12 3z" />
-      </svg>
+      <AzuraMark size={size * 0.78} light />
     </span>
   )
 }
@@ -415,15 +404,9 @@ export function AppChatMessage({
 
 function ThinkingDots() {
   return (
-    <div className="flex items-center gap-1.5 py-2">
-      {[0, 1, 2].map((i) => (
-        <motion.span
-          key={i}
-          className="h-2 w-2 rounded-full bg-brand-strong/60"
-          animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
-          transition={{ repeat: Infinity, duration: 1.1, delay: i * 0.18 }}
-        />
-      ))}
+    <div className="flex items-center gap-2 py-3">
+      <AzuraLogoAnimated size={18} />
+      <span className="text-sm text-muted-foreground">Thinking…</span>
     </div>
   )
 }

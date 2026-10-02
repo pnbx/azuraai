@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch surface: zinc plate with the brand mark centred.
+
+     This is what the system shows between process start and the first frame
+     of AzuraSplashView, so it has to look finished on its own — the
+     animation then picks up from exactly this composition. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/azura_splash_192" />
+    </item>
+</layer-list>

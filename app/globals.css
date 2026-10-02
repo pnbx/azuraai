@@ -454,3 +454,52 @@ button:not(:disabled):active {
 .fade-up {
   animation: fade-up 0.35s ease both;
 }
+
+/* ── Azura animated logo ──────────────────────────────────────────────────
+   Three CSS-only layers so the mark keeps animating while the main thread is
+   busy streaming tokens. See components/brand/logo.tsx. */
+.azura-logo__mark {
+  /* Reveal: wipes in left-to-right on first paint. */
+  animation: azura-reveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.azura-logo__img {
+  /* Breathing: a slow pulse so the screen reads as alive, not frozen. */
+  animation: azura-breathe 2.6s ease-in-out infinite;
+}
+.azura-logo__shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 35%,
+    rgb(255 255 255 / 0.35) 50%,
+    transparent 65%
+  );
+  transform: translateX(-120%);
+  animation: azura-shine 2.6s ease-in-out infinite;
+}
+
+@keyframes azura-reveal {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0 0 0); }
+}
+@keyframes azura-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.035); }
+}
+@keyframes azura-shine {
+  0%       { transform: translateX(-120%); }
+  55%, 100% { transform: translateX(120%); }
+}
+
+/* Respect the OS setting: collapse to a static mark rather than removing the
+   element, which would leave a hole in the layout. */
+@media (prefers-reduced-motion: reduce) {
+  .azura-logo__mark,
+  .azura-logo__img,
+  .azura-logo__shine {
+    animation: none;
+  }
+  .azura-logo__mark { clip-path: none; }
+  .azura-logo__shine { display: none; }
+}
