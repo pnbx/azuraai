@@ -425,7 +425,7 @@ function MemorySection({
                   void submitManual()
                 }
               }}
-              placeholder="Teach Azura something to remember…"
+              placeholder={t('settings.rememberPlaceholder')}
               className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
             <button

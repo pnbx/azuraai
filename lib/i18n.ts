@@ -252,6 +252,10 @@ export const STRINGS = {
     en: 'Memory needs an Azura account, so it is off in the app. Chats still work without it.',
   },
   'settings.newFact': { fa: 'یک واقعیت جدید درباره من…', en: 'A new fact about me…' },
+  'settings.rememberPlaceholder': {
+    fa: 'چیزی برای به‌خاطر سپردن به آزورا بگویید…',
+    en: 'Teach Azura something to remember…',
+  },
   'settings.addFact': { fa: 'افزودن', en: 'Add' },
   'settings.noFacts': { fa: 'هنوز چیزی ذخیره نشده.', en: 'Nothing remembered yet.' },
   'composer.attach': { fa: 'پیوست عکس', en: 'Attach images' },
@@ -276,6 +280,18 @@ export const STRINGS = {
   'markdown.copied': { fa: 'کپی شد ✓', en: 'Copied ✓' },
   'settings.toggleMemory': { fa: 'روشن/خاموش کردن حافظه', en: 'Toggle memory' },
   'settings.forgetFact': { fa: 'پاک کردن این خاطره', en: 'Forget this memory' },
+  'msg.timeNow': { fa: 'همین حالا', en: 'now' },
+  'msg.speak': { fa: 'خواندن با صدا', en: 'Read aloud' },
+  'msg.stopSpeak': { fa: 'توقف خواندن', en: 'Stop reading aloud' },
+  'msg.share': { fa: 'اشتراک‌گذاری پاسخ', en: 'Share response' },
+  'msg.copyResponse': { fa: 'کپی پاسخ', en: 'Copy response' },
+  'msg.copied': { fa: 'کپی شد', en: 'Copied' },
+  'msg.regenerate': { fa: 'پاسخ دوباره', en: 'Regenerate response' },
+  'msg.good': { fa: 'پاسخ خوب بود', en: 'Good response' },
+  'msg.bad': { fa: 'پاسخ بد بود', en: 'Bad response' },
+  'msg.copyMessage': { fa: 'کپی پیام', en: 'Copy message' },
+  'msg.edit': { fa: 'ویرایش پیام', en: 'Edit message' },
+  'msg.reasoning': { fa: 'کمی فکر کرد · {n} حرف', en: 'Thought for a moment · {n} chars' },
 } as const
 
 /** The union of valid translation keys. */

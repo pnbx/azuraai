@@ -33,14 +33,16 @@ import { MessageImages } from './attachments'
 import { AzuraMark, AzuraLogoAnimated } from '@/components/brand/logo'
 import { copyText, downloadTextFile, exportFilename } from './text-utils'
 import { haptic } from './haptics'
+import { useI18n } from './i18n-provider'
+import { translate, type Locale } from '@/lib/i18n'
 
 const spring = { type: 'spring' as const, stiffness: 380, damping: 30 }
 
 /** Compact relative timestamp for message rows. */
-function msgTime(ts?: number): string {
+function msgTime(ts?: number, locale: Locale = 'en'): string {
   if (!ts) return ''
   const diff = Date.now() - ts
-  if (diff < 60_000) return 'now'
+  if (diff < 60_000) return translate(locale, 'msg.timeNow')
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
@@ -106,6 +108,7 @@ function AssistantActions({
 }) {
   const [copied, setCopied] = React.useState(false)
   const [vote, setVote] = React.useState<'up' | 'down' | null>(null)
+  const { t } = useI18n()
 
   const copy = async () => {
     if (await copyText(content)) {
@@ -122,35 +125,35 @@ function AssistantActions({
             onSpeak?.()
             haptic(speaking ? 'medium' : 'light')
           }}
-          label={speaking ? 'Stop reading aloud' : 'Read aloud'}
+          label={speaking ? t('msg.stopSpeak') : t('msg.speak')}
           active={speaking}
         >
           {speaking ? <Square className="h-3 w-3" /> : <Volume2 className="h-3.5 w-3.5" />}
         </ActionButton>
       ) : null}
       {onShare ? (
-        <ActionButton onClick={onShare} label="Share response">
+        <ActionButton onClick={onShare} label={t('msg.share')}>
           <Share2 className="h-3.5 w-3.5" />
         </ActionButton>
       ) : null}
-      <ActionButton onClick={copy} label={copied ? 'Copied' : 'Copy response'}>
+      <ActionButton onClick={copy} label={copied ? t('msg.copied') : t('msg.copyResponse')}>
         {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
       </ActionButton>
       {onRegenerate ? (
-        <ActionButton onClick={onRegenerate} label="Regenerate response">
+        <ActionButton onClick={onRegenerate} label={t('msg.regenerate')}>
           <RefreshCcw className="h-3.5 w-3.5" />
         </ActionButton>
       ) : null}
       <ActionButton
         onClick={() => setVote((v) => (v === 'up' ? null : 'up'))}
-        label="Good response"
+        label={t('msg.good')}
         active={vote === 'up'}
       >
         <ThumbsUp className="h-3.5 w-3.5" />
       </ActionButton>
       <ActionButton
         onClick={() => setVote((v) => (v === 'down' ? null : 'down'))}
-        label="Bad response"
+        label={t('msg.bad')}
         active={vote === 'down'}
       >
         <ThumbsDown className="h-3.5 w-3.5" />
@@ -191,6 +194,7 @@ function SourceCards({ sources }: { sources: NonNullable<ChatMsg['sources']> }) 
 
 function ReasoningBlock({ reasoning, live }: { reasoning: string; live?: boolean }) {
   const [open, setOpen] = React.useState(false)
+  const { tf } = useI18n()
   return (
     <div className="mb-3">
       <button
@@ -198,7 +202,7 @@ function ReasoningBlock({ reasoning, live }: { reasoning: string; live?: boolean
         className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         <Brain className="h-3.5 w-3.5 text-brand-strong" />
-        <span>Thought for a moment · {reasoning.length.toLocaleString()} chars</span>
+        <span>{tf('msg.reasoning', { n: reasoning.length.toLocaleString() })}</span>
         <motion.span animate={{ rotate: open ? 180 : 0 }} transition={spring}>
           <ChevronDown className="h-3.5 w-3.5" />
         </motion.span>
@@ -243,6 +247,7 @@ export function AppChatMessage({
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState(message.content)
   const [copied, setCopied] = React.useState(false)
+  const { t, tf, locale } = useI18n()
 
   const share = async () => {
     const md = message.content
@@ -313,9 +318,9 @@ export function AppChatMessage({
         )}
         {!editing && (
           <div className="mt-1 mr-1 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover/msg:opacity-100">
-            {msgTime(message.ts) ? (
+            {msgTime(message.ts, locale) ? (
               <span className="mr-1 text-[10px] tabular-nums text-muted-foreground" title={message.ts ? new Date(message.ts).toLocaleString() : undefined}>
-                {msgTime(message.ts)}
+                {msgTime(message.ts, locale)}
               </span>
             ) : null}
             <ActionButton
@@ -325,12 +330,12 @@ export function AppChatMessage({
                   setTimeout(() => setCopied(false), 1800)
                 }
               }}
-              label={copied ? 'Copied' : 'Copy message'}
+              label={copied ? t('msg.copied') : t('msg.copyMessage')}
             >
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             </ActionButton>
             {onEditUser ? (
-              <ActionButton onClick={() => setEditing(true)} label="Edit message">
+              <ActionButton onClick={() => setEditing(true)} label={t('msg.edit')}>
                 <Pencil className="h-3.5 w-3.5" />
               </ActionButton>
             ) : null}
@@ -382,9 +387,9 @@ export function AppChatMessage({
 
         {!isStreaming && message.content && !message.failed ? (
           <div className="flex items-center gap-1">
-            {msgTime(message.ts) ? (
+            {msgTime(message.ts, locale) ? (
               <span className="text-[10px] tabular-nums text-muted-foreground" title={message.ts ? new Date(message.ts).toLocaleString() : undefined}>
-                {msgTime(message.ts)}
+                {msgTime(message.ts, locale)}
               </span>
             ) : null}
             <AssistantActions

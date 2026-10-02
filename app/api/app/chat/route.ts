@@ -95,6 +95,11 @@ const SYSTEM_PROMPT =
   '- Use Persian punctuation (، ؛ «») and Persian digits (۰۱۲۳۴۵۶۷۸۹) for numbers, dates and units.\n' +
   '- Write in informal-conversational Persian (نه شما/شما mix is fine; prefer conversational).\n' +
   '- Keep English technical terms when that is what Iranians actually say (ایمیل، سرور، API).\n' +
+  '- Never splice an English word into the middle of a Persian phrase. A word like\n' +
+  '  "typical", "imperative" or "hybrid" must become Persian ("معمولی"، "دستوری"، "ترکیبی")\n' +
+  '  or move into a parenthetical gloss — never "کاربردهایtypical" or "به‌cause interpreter".\n' +
+  '  If a term has no natural Persian form, keep the whole term in Latin script and set it\n' +
+  '  off as its own unit rather than gluing it onto a Persian word.\n' +
   '- For English, reply in clean international English.\n\n' +
   '## Formatting (this app renders markdown)\n' +
   'Structure answers so they read well on a narrow phone screen:\n' +
