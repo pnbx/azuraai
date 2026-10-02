@@ -19,6 +19,8 @@ export interface ChatMsg {
   stages?: string[]
   failed?: boolean
   demo?: boolean
+  /** Image attachments (data URLs) sent alongside this user message. */
+  images?: string[]
 }
 
 export type ChatMode = 'fast' | 'thinking' | 'research'
@@ -86,7 +88,11 @@ export function useAppChatStream() {
           : {
               mode: mode === 'thinking' ? 'thinking' : 'fast',
               remember: options?.remember === true,
-              messages: history.map((m) => ({ role: m.role, content: m.content })),
+              messages: history.map((m) => ({
+                role: m.role,
+                content: m.content,
+                ...(m.images && m.images.length > 0 ? { images: m.images } : {}),
+              })),
             }
 
       try {
@@ -179,7 +185,12 @@ export function useAppChatStream() {
                 handlers.onSources((evt.sources as ChatMsg['sources']) ?? [], isDemo)
                 break
               case 'status':
-                handlers.onStage('retry', isDemo)
+                // 'vision_fallback' means the multimodal model was unavailable
+                // and the answer came from text alone — surface it honestly.
+                handlers.onStage(
+                  evt.message === 'vision_fallback' ? 'vision_fallback' : 'retry',
+                  isDemo
+                )
                 break
               case 'meta':
                 sawRealContent = true

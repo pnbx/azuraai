@@ -21,11 +21,17 @@ import {
   Pencil,
   Brain,
   ChevronDown,
+  Volume2,
+  Square,
+  Share2,
 } from 'lucide-react'
 import type { ChatMsg } from './conversations'
 import { Markdown } from './markdown'
 import { ReasoningText } from './thinking-panel'
 import { openExternal } from './external-link'
+import { MessageImages } from './attachments'
+import { copyText, downloadTextFile, exportFilename } from './text-utils'
+import { haptic } from './haptics'
 
 const spring = { type: 'spring' as const, stiffness: 380, damping: 30 }
 
@@ -97,25 +103,47 @@ function ActionButton({
 function AssistantActions({
   content,
   onRegenerate,
+  onSpeak,
+  speaking,
+  speechSupported,
+  onShare,
 }: {
   content: string
   onRegenerate?: () => void
+  onSpeak?: () => void
+  speaking?: boolean
+  speechSupported?: boolean
+  onShare?: () => void
 }) {
   const [copied, setCopied] = React.useState(false)
   const [vote, setVote] = React.useState<'up' | 'down' | null>(null)
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(content)
+    if (await copyText(content)) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
-    } catch {
-      // clipboard unavailable
     }
   }
 
   return (
     <div className="mt-2 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover/msg:opacity-100">
+      {speechSupported ? (
+        <ActionButton
+          onClick={() => {
+            onSpeak?.()
+            haptic(speaking ? 'medium' : 'light')
+          }}
+          label={speaking ? 'Stop reading aloud' : 'Read aloud'}
+          active={speaking}
+        >
+          {speaking ? <Square className="h-3 w-3" /> : <Volume2 className="h-3.5 w-3.5" />}
+        </ActionButton>
+      ) : null}
+      {onShare ? (
+        <ActionButton onClick={onShare} label="Share response">
+          <Share2 className="h-3.5 w-3.5" />
+        </ActionButton>
+      ) : null}
       <ActionButton onClick={copy} label={copied ? 'Copied' : 'Copy response'}>
         {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
       </ActionButton>
@@ -206,18 +234,42 @@ function ReasoningBlock({ reasoning, live }: { reasoning: string; live?: boolean
 
 export function AppChatMessage({
   message,
+  messageId,
   isStreaming,
   onRegenerate,
   onEditUser,
+  onSpeak,
+  speaking,
+  speechSupported,
 }: {
   message: ChatMsg
+  messageId: string
   isStreaming?: boolean
   onRegenerate?: () => void
   onEditUser?: (text: string) => void
+  onSpeak?: () => void
+  speaking?: boolean
+  speechSupported?: boolean
 }) {
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState(message.content)
   const [copied, setCopied] = React.useState(false)
+
+  const share = async () => {
+    const md = message.content
+    // Prefer the OS share sheet so the user can send it anywhere; fall back
+    // to a Markdown file download when Web Share isn't available.
+    const nav = typeof navigator !== 'undefined' ? navigator : undefined
+    if (nav?.share) {
+      try {
+        await nav.share({ text: md })
+        return
+      } catch {
+        // user dismissed the sheet, or it failed — fall through
+      }
+    }
+    downloadTextFile(exportFilename('azura-response'), md)
+  }
 
   if (message.role === 'user') {
     return (
@@ -260,9 +312,14 @@ export function AppChatMessage({
           </div>
         ) : (
           <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-primary-foreground shadow-sm">
-            <p dir="auto" className="whitespace-pre-wrap text-sm leading-relaxed">
-              {message.content}
-            </p>
+            {message.images && message.images.length > 0 ? (
+              <MessageImages images={message.images} />
+            ) : null}
+            {message.content ? (
+              <p dir="auto" className="whitespace-pre-wrap text-sm leading-relaxed">
+                {message.content}
+              </p>
+            ) : null}
           </div>
         )}
         {!editing && (
@@ -274,12 +331,9 @@ export function AppChatMessage({
             ) : null}
             <ActionButton
               onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(message.content)
+                if (await copyText(message.content)) {
                   setCopied(true)
                   setTimeout(() => setCopied(false), 1800)
-                } catch {
-                  // clipboard unavailable
                 }
               }}
               label={copied ? 'Copied' : 'Copy message'}
@@ -344,7 +398,14 @@ export function AppChatMessage({
                 {msgTime(message.ts)}
               </span>
             ) : null}
-            <AssistantActions content={message.content} onRegenerate={onRegenerate} />
+            <AssistantActions
+              content={message.content}
+              onRegenerate={onRegenerate}
+              onSpeak={onSpeak}
+              speaking={speaking}
+              speechSupported={speechSupported}
+              onShare={share}
+            />
           </div>
         ) : null}
       </div>

@@ -20,6 +20,59 @@ export type ChatRole = 'system' | 'user' | 'assistant'
 export interface ChatMessage {
   role: ChatRole
   content: string
+  /**
+   * Optional image attachments as data URLs. When present the message is
+   * serialized in OpenAI multimodal form (`image_url` parts) so
+   * vision-capable models can actually look at what the user sent.
+   */
+  images?: string[]
+}
+
+/** Guards against sending non-data URLs upstream (SSRF / payload smuggling). */
+const DATA_IMAGE_RE = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/
+
+/** OpenAI-compatible multimodal content part. */
+export type WireContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
+/**
+ * Converts internal messages into the OpenRouter wire format, expanding
+ * messages that carry images into multimodal content arrays.
+ *
+ * Rules:
+ * - system messages always stay plain strings (vision providers reject parts)
+ * - images that are not valid `data:image/...;base64,` URLs are dropped
+ * - a message left with no text and no usable images falls back to a
+ *   single space so providers never receive an empty content array
+ */
+export function toWireMessages(
+  messages: ChatMessage[],
+): Array<{ role: ChatRole; content: string | WireContentPart[] }> {
+  return messages.map((m) => {
+    if (m.role !== 'user' || !m.images || m.images.length === 0) {
+      return { role: m.role, content: m.content }
+    }
+
+    const usable = m.images.filter((url) => DATA_IMAGE_RE.test(url))
+    if (usable.length === 0) return { role: m.role, content: m.content }
+
+    const parts: WireContentPart[] = []
+    if (m.content.trim()) parts.push({ type: 'text', text: m.content })
+    for (const url of usable) parts.push({ type: 'image_url', image_url: { url } })
+
+    return {
+      role: m.role,
+      content: parts.length > 0 ? parts : [{ type: 'text', text: ' ' }],
+    }
+  })
+}
+
+/** True when any user message carries at least one usable image. */
+export function hasImages(messages: ChatMessage[]): boolean {
+  return messages.some(
+    (m) => m.role === 'user' && !!m.images?.some((url) => DATA_IMAGE_RE.test(url)),
+  )
 }
 
 export interface StreamEvents {
@@ -34,6 +87,8 @@ export interface StreamResult {
   reasoning: string
   model: string
   finishReason?: string
+  /** True when at least one image part was actually sent upstream. */
+  vision: boolean
 }
 
 export interface StreamOptions {
@@ -44,6 +99,11 @@ export interface StreamOptions {
   maxTokens?: number
   signal?: AbortSignal
   baseUrl?: string
+  /**
+   * Extra guidance appended to the system message for this call only — used
+   * by the vision fallback to tell the model it is NOT looking at images.
+   */
+  systemNote?: string
 }
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
@@ -205,6 +265,19 @@ export async function streamChatCompletion(
 ): Promise<StreamResult> {
   const baseUrl = (opts.baseUrl || OPENROUTER_BASE_URL).replace(/\/+$/, '')
 
+  let wireMessages = toWireMessages(opts.messages)
+  const vision = wireMessages.some(
+    (m) => Array.isArray(m.content) && m.content.some((p) => p.type === 'image_url'),
+  )
+
+  if (opts.systemNote) {
+    wireMessages = wireMessages.map((m, i) =>
+      i === 0 && m.role === 'system'
+        ? { role: m.role, content: `${m.content}${opts.systemNote}` }
+        : m,
+    )
+  }
+
   let res: Response
   try {
     res = await fetch(`${baseUrl}/chat/completions`, {
@@ -217,7 +290,7 @@ export async function streamChatCompletion(
       },
       body: JSON.stringify({
         model: opts.model,
-        messages: opts.messages,
+        messages: wireMessages,
         stream: true,
         ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
         ...(opts.maxTokens !== undefined ? { max_tokens: opts.maxTokens } : {}),
@@ -307,5 +380,5 @@ export async function streamChatCompletion(
 
   splitter.flush()
 
-  return { content, reasoning, model, finishReason }
+  return { content, reasoning, model, finishReason, vision }
 }

@@ -48,8 +48,19 @@ export const maxDuration = 60
 const MODEL_FAST = process.env.OPENROUTER_MODEL_FAST || 'openrouter/free'
 const MODEL_THINKING =
   process.env.OPENROUTER_MODEL_THINKING || 'openrouter/free'
+/** Vision-capable free model. Free tiers churn, so this stays overridable. */
+const MODEL_VISION =
+  process.env.OPENROUTER_MODEL_VISION || 'google/gemini-2.0-flash-exp:free'
 const DAILY_CAP = Number(process.env.APP_CHAT_DAILY_CAP || 30)
 const MAX_POOL_ATTEMPTS = 4
+
+/** Attachment limits — client downscales before upload, this is the hard cap. */
+const MAX_IMAGES_PER_MESSAGE = 4
+/** ~1.6 MB of base64 ≈ 1.2 MB of decoded image data. */
+const MAX_IMAGE_BYTES = 1_200_000
+const MAX_IMAGE_CHARS = 1_600_000
+const ALLOWED_IMAGE_MIME = /^(image\/(png|jpeg|jpg|webp|gif))$/i
+const DATA_IMAGE_RE = /^data:(image\/(?:png|jpe?g|webp|gif));base64,/i
 
 const SYSTEM_PROMPT =
   'You are Azura, a helpful AI assistant for the AzuraAI app. ' +
@@ -57,7 +68,12 @@ const SYSTEM_PROMPT =
   'respond in the language the user writes in (Persian or English).'
 
 interface ChatRequestBody {
-  messages?: Array<{ role: 'user' | 'assistant'; content: string }>
+  messages?: Array<{
+    role: 'user' | 'assistant'
+    content: string
+    /** Image attachments as data URLs (validated below). */
+    images?: string[]
+  }>
   mode?: 'fast' | 'thinking'
   /** Client toggle: allow reading + auto-extracting long-term memories. */
   remember?: boolean
@@ -125,8 +141,32 @@ export async function POST(req: NextRequest) {
   }
 
   const mode = body.mode === 'thinking' ? 'thinking' : 'fast'
-  const model = mode === 'thinking' ? MODEL_THINKING : MODEL_FAST
   const remember = body.remember === true
+
+  // ─── Attachments ───────────────────────────────────────────────────────────
+  // Images are validated and normalized here, BEFORE the cap check, so a
+  // malformed payload can't burn a daily message.
+  const imagesByIndex = new Map<number, string[]>()
+  rawMessages.forEach((m, i) => {
+    if (!Array.isArray(m.images) || m.images.length === 0) return
+    const accepted: string[] = []
+    for (const raw of m.images.slice(0, MAX_IMAGES_PER_MESSAGE)) {
+      if (typeof raw !== 'string' || raw.length > MAX_IMAGE_CHARS) continue
+      if (!DATA_IMAGE_RE.test(raw)) continue
+      const mime = /^data:([^;]+);base64,/i.exec(raw)?.[1] ?? ''
+      if (!ALLOWED_IMAGE_MIME.test(mime)) continue
+      // base64 inflates by 4/3 — approximate the decoded size cheaply.
+      if (Math.floor((raw.length - raw.indexOf(',') - 1) * 0.75) > MAX_IMAGE_BYTES) continue
+      accepted.push(raw)
+    }
+    if (accepted.length > 0) imagesByIndex.set(i, accepted)
+  })
+
+  const visionRequested = imagesByIndex.size > 0
+  // Vision needs a multimodal model, so it overrides the mode model. If the
+  // vision model turns out to be dead we fall back to text-only below rather
+  // than failing the user's message outright.
+  const model = visionRequested ? MODEL_VISION : mode === 'thinking' ? MODEL_THINKING : MODEL_FAST
 
   // ─── Memory: load durable facts for the system prompt ──────────────────
   let memoryBlock = ''
@@ -149,14 +189,21 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const visionHint =
+    ' The user attached images. Look at them carefully and describe or answer ' +
+    'based on what you actually see in them. If an image is unreadable, say so.'
+
   const messages: ChatMessage[] = [
     {
       role: 'system',
-      content: memoryBlock ? `${SYSTEM_PROMPT}\n\n${memoryBlock}` : SYSTEM_PROMPT,
+      content:
+        (memoryBlock ? `${SYSTEM_PROMPT}\n\n${memoryBlock}` : SYSTEM_PROMPT) +
+        (visionRequested ? visionHint : ''),
     },
-    ...rawMessages.map((m) => ({
+    ...rawMessages.map((m, i) => ({
       role: m.role === 'assistant' ? ('assistant' as const) : ('user' as const),
       content: m.content,
+      images: imagesByIndex.get(i),
     })),
   ]
 
@@ -194,22 +241,30 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const outcome = await withPoolFailover(
-          async (key) =>
-            streamChatCompletion(
-              {
-                apiKey: key.apiKey,
-                model,
-                messages,
-                temperature: mode === 'thinking' ? 0.6 : 0.8,
-                maxTokens: mode === 'thinking' ? 4096 : 2048,
-                signal: req.signal,
-              },
-              {
-                onContent: (delta) => send(sseFrame({ type: 'content', delta })),
-                onReasoning: (delta) => send(sseFrame({ type: 'reasoning', delta })),
-              }
-            ),
+        const runModel = (
+          key: PooledKey,
+          m: ChatMessage[],
+          mdl: string,
+          systemNote?: string
+        ) =>
+          streamChatCompletion(
+            {
+              apiKey: key.apiKey,
+              model: mdl,
+              messages: m,
+              temperature: mode === 'thinking' ? 0.6 : 0.8,
+              maxTokens: mode === 'thinking' ? 4096 : 2048,
+              signal: req.signal,
+              ...(systemNote ? { systemNote } : {}),
+            },
+            {
+              onContent: (delta) => send(sseFrame({ type: 'content', delta })),
+              onReasoning: (delta) => send(sseFrame({ type: 'reasoning', delta })),
+            }
+          )
+
+        let outcome = await withPoolFailover(
+          (key) => runModel(key, messages, model),
           (err) => {
             const retryable = defaultIsRetryable(err)
             if (retryable) {
@@ -225,6 +280,44 @@ export async function POST(req: NextRequest) {
           MAX_POOL_ATTEMPTS
         )
 
+        // ─── Vision fallback ────────────────────────────────────────────────
+        // Free multimodal models disappear without warning. If the vision
+        // model rejected the payload, retry text-only on the normal model so
+        // the user still gets an answer (and a note that images were skipped)
+        // instead of a hard failure.
+        if (!('result' in outcome) && visionRequested) {
+          const visionDead =
+            outcome.error instanceof OpenRouterError &&
+            (outcome.error.type === 'invalid_request' ||
+              outcome.error.type === 'authentication_error' ||
+              outcome.error.type === 'provider_unavailable')
+          if (visionDead) {
+            send(sseFrame({ type: 'status', message: 'vision_fallback' }))
+            const textOnly = messages.map((m) => ({ ...m, images: undefined }))
+            const fallbackModel =
+              mode === 'thinking' ? MODEL_THINKING : MODEL_FAST
+            outcome = await withPoolFailover(
+              (key) =>
+                runModel(
+                  key,
+                  textOnly,
+                  fallbackModel,
+                  ' (The images attached to this message could not be processed, so answer from the text alone and do not claim to have seen them.)'
+                ),
+              (err) => {
+                const retryable = defaultIsRetryable(err)
+                if (retryable) {
+                  send(
+                    sseFrame({ type: 'status', message: 'switching_model_key' })
+                  )
+                }
+                return retryable
+              },
+              MAX_POOL_ATTEMPTS
+            )
+          }
+        }
+
         if ('result' in outcome) {
           send(
             sseFrame({
@@ -232,6 +325,7 @@ export async function POST(req: NextRequest) {
               model: outcome.result.model,
               content: outcome.result.content,
               reasoning: outcome.result.reasoning,
+              vision: visionRequested && outcome.result.vision === true,
             })
           )
           // ─── Memory extraction (fire-and-forget, never blocks) ─────────

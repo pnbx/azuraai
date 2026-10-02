@@ -23,6 +23,12 @@ export interface ChatMsg {
   failed?: boolean
   demo?: boolean
   ts?: number
+  /**
+   * Image attachments as data URLs (downscaled on the client). Only ever set
+   * on user messages — they render as thumbnails and are sent to the model
+   * as multimodal parts.
+   */
+  images?: string[]
 }
 
 export interface Conversation {
@@ -37,6 +43,41 @@ export interface Conversation {
 
 const STORAGE_KEY = 'azura-conversations-v1'
 const MAX_CONVERSATIONS = 200
+
+/** Attachments allowed in a single outgoing message (mirrors the API cap). */
+export const MAX_IMAGES_PER_MESSAGE = 4
+/**
+ * Images are ~60-90 KB each as data URLs, and localStorage caps out around
+ * 5 MB. We only keep attachments on the most recent exchanges and strip the
+ * rest on save, so long conversations never silently fail to persist.
+ */
+const KEEP_IMAGES_ON_LAST = 2
+
+/**
+ * Returns a storage-safe copy of a message list: keeps image data only on the
+ * final {@link KEEP_IMAGES_ON_LAST} messages that have any, dropping the rest.
+ * Pure — the caller's messages are never mutated.
+ */
+export function compactForStorage(messages: ChatMsg[]): ChatMsg[] {
+  const keepFrom = (() => {
+    let seen = 0
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].images?.length) {
+        seen++
+        if (seen === KEEP_IMAGES_ON_LAST) return i
+      }
+    }
+    return Number.POSITIVE_INFINITY
+  })()
+
+  return messages.map((m, i) => {
+    if (!m.images || m.images.length === 0) return m
+    if (i >= keepFrom) return m
+    const stripped: ChatMsg = { ...m }
+    delete stripped.images
+    return stripped
+  })
+}
 
 // ─── Tiny external store around localStorage ────────────────────────────────
 

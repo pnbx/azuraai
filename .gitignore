@@ -49,3 +49,12 @@ supabase/.temp/
 
 .vercel
 .env*
+
+# Local Android build output
+android/build-log.txt
+android/app/build/
+android/build/
+android/.gradle/
+
+# Freebuff desktop app state
+.freebuff/

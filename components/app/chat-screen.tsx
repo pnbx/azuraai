@@ -23,6 +23,7 @@ import {
   ArrowUp,
   Mic,
   MicOff,
+  Download,
   X,
 } from 'lucide-react'
 import { useAppChatStream } from './use-chat-stream'
@@ -32,6 +33,7 @@ import {
   type Conversation,
   newConversation,
   autoTitle,
+  compactForStorage,
 } from './conversations'
 import { useConversations } from './use-conversations'
 import { AppChatMessage, AzuraAvatar } from './chat-message'
@@ -41,8 +43,41 @@ import { useVoiceInput } from './voice-input'
 import { useMemory } from './use-memory'
 import { haptic } from './haptics'
 import { useAndroidBackButton } from './use-android-back'
+import {
+  AttachmentBar,
+  buildAttachment,
+  MAX_ATTACHMENTS,
+  type Attachment,
+} from './attachments'
+import { useSpeech } from './use-speech'
+import {
+  conversationToMarkdown,
+  downloadTextFile,
+  exportFilename,
+} from './text-utils'
 
 const spring = { type: 'spring' as const, stiffness: 380, damping: 30 }
+
+/** Composer draft survives navigation, tab switches, and app restarts. */
+const DRAFT_KEY = 'azura-composer-draft-v1'
+
+function loadDraft(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    return localStorage.getItem(DRAFT_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function saveDraft(value: string) {
+  try {
+    if (value) localStorage.setItem(DRAFT_KEY, value)
+    else localStorage.removeItem(DRAFT_KEY)
+  } catch {
+    // private mode / quota — drafts are best-effort
+  }
+}
 
 const MODES: Array<{ key: ChatMode; label: string; icon: typeof Zap; hint: string }> = [
   { key: 'fast', label: 'Fast', icon: Zap, hint: 'Quick answers' },
@@ -57,6 +92,12 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
   const [drawerOpen, setDrawerOpen] = React.useState(false)
   const [messages, setMessages] = React.useState<ChatMsg[]>([])
   const [hydrated, setHydrated] = React.useState(false)
+  /** Last deleted conversation, kept for the undo toast. */
+  const [undo, setUndo] = React.useState<{
+    conv: Conversation
+    timer: ReturnType<typeof setTimeout>
+  } | null>(null)
+  const undoTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Hydrate the most recent conversation after mount (deferred so the
   // effect body stays side-effect free per react-hooks rules).
@@ -79,10 +120,12 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
     (id: string | null, msgs: ChatMsg[], mode: ChatMode) => {
       if (!id) return
       const now = Date.now()
+      // compactForStorage drops image bytes from all but the newest couple of
+      // turns — long chats stay well inside the localStorage quota.
       upsert({
         id,
         title: autoTitle(msgs),
-        messages: msgs.slice(-80),
+        messages: compactForStorage(msgs.slice(-80)),
         mode,
         pinned: conversations.find((c) => c.id === id)?.pinned ?? false,
         createdAt: conversations.find((c) => c.id === id)?.createdAt ?? now,
@@ -173,13 +216,69 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
     ta.style.height = 'auto'
     ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`
     setHasText(text.trim().length > 0)
+    saveDraft(text)
   }, [])
+
+  // ── Read aloud ────────────────────────────────────────────────────────
+  const speech = useSpeech()
+
+  // ── Export current conversation ───────────────────────────────────────
+  const [exportNote, setExportNote] = React.useState<string | null>(null)
+  const flash = React.useCallback((text: string) => {
+    setExportNote(text)
+    setTimeout(() => setExportNote(null), 2200)
+  }, [])
+
+  const handleExport = React.useCallback(async () => {
+    const conv = activeId ? conversations.find((c) => c.id === activeId) : null
+    const msgs = conv?.messages ?? messages
+    if (msgs.length === 0) {
+      flash('Nothing to export yet')
+      return
+    }
+    const title = conv?.title ?? 'Azura chat'
+    const md = conversationToMarkdown({ title, messages: msgs })
+    haptic('light')
+
+    // Offer the OS share sheet first; otherwise save a .md file.
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({ title, text: md })
+        return
+      } catch {
+        // dismissed or unsupported payload — fall through to the file
+      }
+    }
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(md)
+        flash('Copied to clipboard')
+        return
+      } catch {
+        // fall through to download
+      }
+    }
+    downloadTextFile(exportFilename(title), md)
+    flash('Saved as Markdown')
+  }, [activeId, conversations, messages, flash])
 
   const voice = useVoiceInput((text, isFinal) => {
     if (!isFinal) return
     const prev = textareaRef.current?.value ?? ''
     setComposerText(prev ? `${prev} ${text}`.trim() : text)
   })
+
+  // ── Draft restore ───────────────────────────────────────────────────────
+  // Runs after the first paint so the textarea element exists. Deferred into
+  // a frame to match the conversation-hydration effect above.
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const draft = loadDraft()
+      if (draft) setComposerText(draft)
+    })
+    return () => cancelAnimationFrame(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Sending ────────────────────────────────────────────────────────────────
   const runStream = React.useCallback(
@@ -217,9 +316,64 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
     [send, remember, refreshMemories]
   )
 
+  // ─── Attachments ─────────────────────────────────────────────────────────
+  const [attachments, setAttachments] = React.useState<Attachment[]>([])
+  const [attachError, setAttachError] = React.useState<string | null>(null)
+  const [importing, setImporting] = React.useState(false)
+
+  const handleAddFiles = React.useCallback(
+    async (files: File[]) => {
+      setAttachError(null)
+      const room = MAX_ATTACHMENTS - attachments.length
+      if (room <= 0) {
+        setAttachError(`Up to ${MAX_ATTACHMENTS} images per message`)
+        return
+      }
+      const images = files.filter((f) => f.type.startsWith('image/'))
+      if (images.length === 0) {
+        setAttachError('Only images are supported right now')
+        return
+      }
+      setImporting(true)
+      try {
+        const built: Attachment[] = []
+        for (const file of images.slice(0, room)) {
+          try {
+            built.push(await buildAttachment(file))
+          } catch {
+            // Unsupported codec (HEIC is common on some phones) — skip it
+            // rather than failing the whole batch.
+          }
+        }
+        if (built.length === 0) {
+          setAttachError('Could not read that image')
+        } else {
+          setAttachments((prev) => [...prev, ...built].slice(0, MAX_ATTACHMENTS))
+          if (images.length > room) {
+            setAttachError(`Only ${MAX_ATTACHMENTS} images per message`)
+          }
+          haptic('light')
+        }
+      } finally {
+        setImporting(false)
+      }
+    },
+    [attachments.length]
+  )
+
+  const removeAttachment = React.useCallback((index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
+    setAttachError(null)
+  }, [])
+
+  const composerBusy = busy || importing
+
   async function handleSend(override?: { text: string; mode: ChatMode; history: ChatMsg[] }) {
+    // Images alone are a valid message — Azura can look at a photo with no
+    // text at all, so don't require a non-empty prompt when attachments exist.
+    const pendingImages = override ? [] : attachments.map((a) => a.dataUrl)
     const text = override ? override.text : (textareaRef.current?.value ?? '').trim()
-    if (!text || busy) return
+    if ((!text && pendingImages.length === 0) || busy) return
     haptic('light')
 
     let history: ChatMsg[]
@@ -227,10 +381,16 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
       history = override.history
       setMessages(history)
     } else {
-      const userMsg: ChatMsg = { role: 'user', content: text, ts: Date.now() }
+      const userMsg: ChatMsg = {
+        role: 'user',
+        content: text,
+        ts: Date.now(),
+        ...(pendingImages.length > 0 ? { images: pendingImages } : {}),
+      }
       history = [...messages, userMsg]
       setMessages(history)
       setComposerText('')
+      setAttachments([])
     }
 
     let id = activeId
@@ -295,6 +455,8 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
     setMessages([])
     setActiveId(null)
     setComposerText('')
+    setAttachments([])
+    setAttachError(null)
     haptic('light')
   }, [])
 
@@ -326,15 +488,39 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
 
   const handleDelete = React.useCallback(
     (id: string) => {
+      const conv = conversations.find((c) => c.id === id)
+      if (!conv) return
       remove(id)
       if (id === activeId) {
         setActiveId(null)
         setMessages([])
       }
       haptic('medium')
+
+      // Deletion is undoable — losing a long conversation to a mis-tap is
+      // the worst thing this screen could do.
+      setUndo({ conv, timer: setTimeout(() => setUndo(null), 6000) })
     },
-    [remove, activeId]
+    [remove, activeId, conversations]
   )
+
+  // Discard the pending undo when a new one starts or the screen unmounts.
+  React.useEffect(
+    () => () => {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    },
+    [undo]
+  )
+
+  const handleUndoDelete = React.useCallback(() => {
+    setUndo((u) => {
+      if (!u) return null
+      if (u.timer) clearTimeout(u.timer)
+      upsert(u.conv)
+      haptic('light')
+      return null
+    })
+  }, [upsert])
 
   const handleTogglePin = React.useCallback(
     (id: string) => {
@@ -419,8 +605,54 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
               >
                 Sign in
               </a>
-            ) : null}
+            ) : (
+              <button
+                onClick={handleExport}
+                disabled={messages.length === 0}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                aria-label="Export conversation"
+                title="Export conversation"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+            )}
           </header>
+
+          {/* Undo delete toast */}
+          <AnimatePresence>
+            {undo ? (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mx-3 mt-2 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 text-sm shadow-lg"
+              >
+                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  Deleted “{undo.conv.title}”
+                </span>
+                <button
+                  onClick={handleUndoDelete}
+                  className="shrink-0 text-xs font-semibold text-brand-strong underline underline-offset-2"
+                >
+                  Undo
+                </button>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          {/* Export result flash */}
+          <AnimatePresence>
+            {exportNote ? (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mx-3 mt-2 rounded-xl border border-border bg-card px-4 py-2 text-center text-xs text-muted-foreground shadow-lg"
+              >
+                {exportNote}
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
 
           {/* Messages */}
           <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto">
@@ -434,7 +666,15 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                   <div key={`${i}-${m.ts ?? i}`} className="mb-5">
                     <AppChatMessage
                       message={m}
+                      messageId={`${activeId ?? 'draft'}-${i}`}
                       isStreaming={i === messages.length - 1 && busy}
+                      speechSupported={speech.supported}
+                      speaking={speech.speakingId === `${activeId ?? 'draft'}-${i}`}
+                      onSpeak={
+                        m.role === 'assistant'
+                          ? () => speech.toggle(`${activeId ?? 'draft'}-${i}`, m.content)
+                          : undefined
+                      }
                       onRegenerate={
                         i === messages.length - 1 && m.role === 'assistant' && !busy
                           ? regenerate
@@ -520,6 +760,18 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
             style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 0.5rem)' }}
           >
             <div className="mx-auto w-full max-w-3xl">
+              {/* Attachments — Azura can see images, so the picker sits
+                  directly above the mode row where the thumb is. */}
+              {attachments.length > 0 || !busy ? (
+                <AttachmentBar
+                  attachments={attachments}
+                  onAdd={handleAddFiles}
+                  onRemove={removeAttachment}
+                  busy={composerBusy}
+                  error={attachError}
+                />
+              ) : null}
+
               {/* Mode selector */}
               <div className="flex items-center gap-1.5 pb-2">
                 {MODES.map((m) => {
@@ -572,6 +824,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                       setHasText(e.target.value.trim().length > 0)
                       e.target.style.height = 'auto'
                       e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`
+                      saveDraft(e.target.value)
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
@@ -583,9 +836,11 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                     placeholder={
                       voice.listening
                         ? 'Listening…'
-                        : mode === 'research'
-                          ? 'Ask anything — I will search the web…'
-                          : 'Message Azura…'
+                        : attachments.length > 0
+                          ? 'Ask about this image…'
+                          : mode === 'research'
+                            ? 'Ask anything — I will search the web…'
+                            : 'Message Azura…'
                     }
                     className="max-h-[140px] w-full resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                   />
@@ -631,13 +886,13 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                       handleSend()
                     }
                   }}
-                  disabled={!busy && !hasText}
+                  disabled={!busy && !hasText && attachments.length === 0}
                   whileTap={{ scale: 0.86 }}
                   transition={spring}
                   className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white transition-[background-color,box-shadow] duration-200 ${
                     busy
                       ? 'bg-destructive shadow-lg shadow-destructive/30'
-                      : hasText
+                      : hasText || attachments.length > 0
                         ? 'bg-gradient-to-br from-brand-strong to-brand-deep shadow-lg shadow-brand/30'
                         : 'bg-muted-foreground/25 shadow-none'
                   }`}
