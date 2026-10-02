@@ -16,7 +16,9 @@ export default async function AppIntegrationsPage() {
   } catch {
     authed = false
   }
-  if (!authed) redirect('/auth/login?redirect=/app/integrations')
+  // Google integration is account-bound; with no in-app sign-in there is nothing
+// to connect, so send people back to the chat instead of a dead login page.
+if (!authed) redirect('/app')
 
   return <AppIntegrationsPanel />
 }

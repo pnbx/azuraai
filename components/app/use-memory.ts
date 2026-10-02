@@ -64,8 +64,15 @@ function getSnapshot(): MemoryItem[] {
   return cache
 }
 
+/**
+ * Stable empty snapshot. useSyncExternalStore requires the server snapshot to
+ * be referentially stable — returning a fresh [] on every call makes React
+ * throw "getServerSnapshot should be cached to avoid an infinite loop".
+ */
+const EMPTY_MEMORIES: MemoryItem[] = []
+
 function getServerSnapshot(): MemoryItem[] {
-  return []
+  return EMPTY_MEMORIES
 }
 
 export function isMemoryOptedOut(): boolean {

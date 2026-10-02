@@ -62,10 +62,14 @@ const PUBLIC_ROUTES = [
 ]
 
 // Routes that require authentication (checked via middleware + server auth helpers)
+//
+// NOTE: '/app' is deliberately NOT here. The mobile app has no accounts —
+// anyone who installs it chats immediately, so gating it produced a login
+// screen with no way past it. Account-bound app pages (memory, Google
+// integrations) still enforce auth server-side.
 const PROTECTED_ROUTES = [
   '/dashboard',
   '/admin',
-  '/app',
   '/api/wallet',
   '/api/api-keys',
   '/api/models',
@@ -93,6 +97,9 @@ const PUBLIC_API_ROUTES = [
   '/api/payments/callback/zarinpal',
   '/api/inference',   // self-authenticating (API key or session)
   '/api/usage',       // self-authenticating (API key or session)
+  // App chat is accountless: these routes treat a session as an optional bonus.
+  '/api/app/chat',
+  '/api/app/research',
 ]
 
 export async function middleware(request: NextRequest) {

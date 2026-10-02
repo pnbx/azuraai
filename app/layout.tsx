@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono, Vazirmatn } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme'
+import { localeInitScript } from '@/lib/i18n'
 import './globals.css'
 
 const geistSans = Geist({
@@ -83,6 +84,11 @@ export default function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+        {/* Locale must be resolved before first paint, otherwise a Persian
+            phone renders one English frame before flipping to RTL. Scripts
+            rendered inside a component never execute, so it lives in <head>
+            next to themeInit. It no-ops outside the app shell. */}
+        <script dangerouslySetInnerHTML={{ __html: localeInitScript }} />
       </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>{children}</ThemeProvider>

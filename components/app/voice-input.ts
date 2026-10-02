@@ -28,13 +28,16 @@ interface SpeechEventLike {
 
 export function useVoiceInput(onText: (text: string, isFinal: boolean) => void) {
   const [listening, setListening] = useState(false)
-  // Feature detection runs lazily on first client render (same value the
-  // effect would produce) so there is no setState-in-effect cascade.
-  const [supported] = useState(() => {
-    if (typeof window === 'undefined') return false
+  // Feature detection must start as false on BOTH sides of hydration: a
+  // useState(() => window…) initializer returns true on the client and false
+  // on the server, which made React throw a hydration mismatch and regenerate
+  // the whole composer on every cold load. Resolve it after mount instead.
+  const [supported, setSupported] = useState(false)
+  useEffect(() => {
     const w = window as unknown as Record<string, unknown>
-    return Boolean(w.SpeechRecognition ?? w.webkitSpeechRecognition)
-  })
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate: the only safe way to feature-detect a browser API without breaking hydration (see note above)
+    setSupported(Boolean(w.SpeechRecognition ?? w.webkitSpeechRecognition))
+  }, [])
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const onTextRef = useRef(onText)
 

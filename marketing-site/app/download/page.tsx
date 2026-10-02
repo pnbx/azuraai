@@ -20,11 +20,10 @@ export const metadata: Metadata = {
 const APK = "/downloads/azura-app.apk";
 const APK_MB = "۳٫۸ مگابایت";
 
-/** Only what the shipped build actually does — see the device screenshots below. */
 /**
  * Only claims the shipped build actually backs up — each one can be pointed
- * at in the screenshots below. The UI is English; Persian is a chat language,
- * so don't advertise a Persian interface.
+ * at in the screenshots below. The UI follows the phone's language (Persian or
+ * English), and chat works in both.
  */
 const features: { icon: IconName; title: string; desc: string }[] = [
   {
@@ -98,11 +97,11 @@ const installNotes = [
   },
   {
     q: "حساب کاربری جدا لازم دارد؟",
-    a: "نه، اما باید وارد شوید. همان ایمیل و رمزی را که در سایت دارید وارد کنید؛ اعتبار و اشتراک بین سایت و اپ مشترک است.",
+    a: "نه. اپ را باز کنید و مستقیم چت کنید — نه ثبت‌نام، نه ورود، نه محدودیت تعداد پیام.",
   },
   {
     q: "رابط کاربری فارسی است؟",
-    a: "رابط کاربری انگلیسی است و پاسخ مدل‌ها به فارسی روان می‌آید. اگر نسخه فارسی رابط کاربری را می‌خواهید، در بخش بازخورد سایت به ما بگویید.",
+    a: "بله. رابط کاربری خودکار با زبان گوشی شما تنظیم می‌شود — فارسی یا انگلیسی — و هر زمان خواستید از بخش تنظیمات می‌توانید آن را عوض کنید. متن راست‌به‌چپ و جدول هم درست نمایش داده می‌شوند.",
   },
 ];
 

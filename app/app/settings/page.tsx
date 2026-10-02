@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { AppSettingsPanel } from '@/components/app/settings-panel'
+import { I18nProvider } from '@/components/app/i18n-provider'
 import { getServerUser } from '@/lib/auth/server'
 
 export const metadata: Metadata = {
@@ -8,13 +9,14 @@ export const metadata: Metadata = {
 }
 
 export default async function AppSettingsPage() {
-  let authed = false
-  try {
-    await getServerUser()
-    authed = true
-  } catch {
-    authed = false
-  }
+  // A session is optional here too — memory is simply unavailable without one.
+  const authed = await getServerUser()
+    .then(() => true)
+    .catch(() => false)
 
-  return <AppSettingsPanel authed={authed} />
+  return (
+    <I18nProvider>
+      <AppSettingsPanel authed={authed} />
+    </I18nProvider>
+  )
 }

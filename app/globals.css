@@ -370,7 +370,7 @@ button:not(:disabled):active {
 .md-body h3 { font-size: 1rem; }
 .md-body ul,
 .md-body ol {
-  padding-left: 1.4em;
+  padding-inline-start: 1.4em;
   display: flex;
   flex-direction: column;
   gap: 0.35em;
@@ -379,6 +379,12 @@ button:not(:disabled):active {
 .md-body ol { list-style: decimal; }
 .md-body ul > li::marker { color: var(--muted-foreground); }
 .md-body ol > li::marker { color: var(--muted-foreground); }
+/* A nested list indents from the logical start edge, so it works in RTL too. */
+.md-body .md-ul,
+.md-body .md-ol {
+  margin-top: 0.3em;
+  padding-inline-start: 1.2em;
+}
 .md-body hr {
   border: 0;
   border-top: 1px solid var(--border);
@@ -389,10 +395,27 @@ button:not(:disabled):active {
   padding-left: 0.9em;
   color: var(--muted-foreground);
 }
+/* Persian blockquotes put the rule on the right. */
+.md-body blockquote[dir='rtl'] {
+  border-left: none;
+  border-right: 3px solid var(--border-strong);
+  padding-left: 0;
+  padding-right: 0.9em;
+}
 .md-body table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
+}
+/* Wide tables scroll instead of crushing columns on a phone. */
+.md-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+}
+.md-table-scroll table {
+  min-width: 22rem;
 }
 .md-body th,
 .md-body td {
@@ -400,9 +423,82 @@ button:not(:disabled):active {
   padding: 0.45em 0.7em;
   text-align: left;
 }
+/* Inside an RTL table the first column should sit on the right. */
+.md-body [dir='rtl'] th,
+.md-body [dir='rtl'] td {
+  text-align: right;
+}
 .md-body th {
   background: var(--muted);
   font-weight: 600;
+  white-space: nowrap;
+}
+.md-body tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+
+/* Task lists: a real checkbox glyph aligned to the first line. */
+.md-task {
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+.md-checkbox {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.05em;
+  height: 1.05em;
+  margin-top: 0.28em;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 0.3em;
+  font-size: 0.72em;
+  line-height: 1;
+  color: transparent;
+}
+.md-checkbox--on {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+.md-li-body {
+  min-width: 0;
+}
+/* Nested lists sit flush under their parent bullet. */
+.md-body .md-ul,
+.md-body .md-ol {
+  margin-top: 0.3em;
+}
+
+/* ==highlight== — the model uses this for the single most important phrase. */
+.md-highlight {
+  background: color-mix(in srgb, var(--brand) 22%, transparent);
+  color: var(--foreground);
+  border-radius: 0.3em;
+  padding: 0.05em 0.3em;
+  font-weight: 600;
+}
+
+/* LaTeX is rendered as readable monospace rather than dropped, since the app
+   ships no KaTeX bundle. Always LTR — maths is not mirrored in RTL. */
+.md-math {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.92em;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 0.35em;
+  padding: 0.05em 0.35em;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+}
+.md-math-block {
+  display: block;
+  overflow-x: auto;
+  text-align: center;
+  unicode-bidi: isolate;
+  font-size: 0.88rem;
+  line-height: 1.6;
 }
 .md-inline-code {
   background: var(--code-bg);

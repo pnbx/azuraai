@@ -173,22 +173,24 @@ export function groupByRecency(
   const weekAgo = startOfToday - 6 * 24 * 60 * 60 * 1000
   const monthAgo = startOfToday - 29 * 24 * 60 * 60 * 1000
 
+  // Keys are stable ids; the drawer maps them to localized labels via
+  // groupLabelKey(), so switching language does not need a regroup.
   const groups: Record<string, Conversation[]> = {
-    Pinned: [],
-    Today: [],
-    Yesterday: [],
-    'Previous 7 days': [],
-    'Previous 30 days': [],
-    Older: [],
+    pinned: [],
+    today: [],
+    yesterday: [],
+    week: [],
+    month: [],
+    older: [],
   }
 
   for (const c of conversations) {
-    if (c.pinned) groups.Pinned.push(c)
-    else if (c.updatedAt >= startOfToday) groups.Today.push(c)
-    else if (c.updatedAt >= startOfYesterday) groups.Yesterday.push(c)
-    else if (c.updatedAt >= weekAgo) groups['Previous 7 days'].push(c)
-    else if (c.updatedAt >= monthAgo) groups['Previous 30 days'].push(c)
-    else groups.Older.push(c)
+    if (c.pinned) groups.pinned.push(c)
+    else if (c.updatedAt >= startOfToday) groups.today.push(c)
+    else if (c.updatedAt >= startOfYesterday) groups.yesterday.push(c)
+    else if (c.updatedAt >= weekAgo) groups.week.push(c)
+    else if (c.updatedAt >= monthAgo) groups.month.push(c)
+    else groups.older.push(c)
   }
 
   return Object.entries(groups)

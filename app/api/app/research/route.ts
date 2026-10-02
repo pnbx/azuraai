@@ -45,16 +45,10 @@ function sseFrame(obj: unknown): string {
 }
 
 export async function POST(req: NextRequest) {
-  // ─── Auth ────────────────────────────────────────────────────────────────
-  let user
-  try {
-    user = await getServerUser()
-  } catch {
-    return NextResponse.json(
-      { success: false, error: 'unauthenticated' },
-      { status: 401 }
-    )
-  }
+  // ─── Auth (optional) ──────────────────────────────────────────────────────
+  // Same model as /api/app/chat: no account required, a session only unlocks
+  // memory. Every user-scoped branch below is guarded by `user`.
+  const user = await getServerUser().catch(() => null)
 
   // ─── Body ────────────────────────────────────────────────────────────────
   let body: ResearchBody
@@ -75,29 +69,31 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // ─── Daily cap (shared with chat) ────────────────────────────────────────
-  const { data: capData, error: capError } = await supabaseAdmin.rpc(
-    'increment_app_chat_usage',
-    { p_user_id: user.id, p_daily_cap: DAILY_CAP }
-  )
-  const capRow = Array.isArray(capData) ? capData[0] : capData
-  if (capError) {
-    // Degrade gracefully when usage tracking is unavailable (see chat route).
-    console.error('[AppResearch] usage RPC failed (allowing request):', capError.message)
-  } else if (!capRow?.allowed) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'daily_cap_reached',
-        used: capRow?.used ?? DAILY_CAP,
-        cap: capRow?.cap ?? DAILY_CAP,
-      },
-      { status: 429 }
+  // ─── Daily cap (shared with chat, signed-in users only) ──────────────────
+  if (user) {
+    const { data: capData, error: capError } = await supabaseAdmin.rpc(
+      'increment_app_chat_usage',
+      { p_user_id: user.id, p_daily_cap: DAILY_CAP }
     )
+    const capRow = Array.isArray(capData) ? capData[0] : capData
+    if (capError) {
+      // Degrade gracefully when usage tracking is unavailable (see chat route).
+      console.error('[AppResearch] usage RPC failed (allowing request):', capError.message)
+    } else if (!capRow?.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'daily_cap_reached',
+          used: capRow?.used ?? DAILY_CAP,
+          cap: capRow?.cap ?? DAILY_CAP,
+        },
+        { status: 429 }
+      )
+    }
   }
 
   // ─── Memory: load durable facts for the system prompt ──────────────────
-  const remember = body.remember === true
+  const remember = body.remember === true && user !== null
   let memoryBlock = ''
   let memoriesForExtraction: UserMemory[] = []
   if (remember) {
@@ -169,7 +165,7 @@ export async function POST(req: NextRequest) {
             })
           )
           // ─── Memory extraction (fire-and-forget, never blocks) ─────────
-          if (remember && memoriesForExtraction.length < 100) {
+          if (remember && user && memoriesForExtraction.length < 100) {
             void extractAndStoreMemories({
               userId: user.id,
               apiKey: outcome.key.apiKey,

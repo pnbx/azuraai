@@ -6,7 +6,11 @@
  * Zero dependencies — supports the subset LLMs actually emit:
  *   headings, bold/italic, inline code, fenced code blocks (with language
  *   label + lightweight token highlighting + copy button), links, block
- *   quotes, ordered/unordered lists, tables, hr, and [n] citation chips.
+ *   quotes, ordered/unordered lists, tables, hr, [n] citation chips,
+ *   ==highlight==, and inline/block LaTeX.
+ *
+ * Bidirectional text is first-class: Persian answers get dir="rtl" so
+ * punctuation and table columns land on the correct side.
  *
  * Streams gracefully: an unterminated fence renders as a live code block.
  */
@@ -14,13 +18,19 @@
 import * as React from 'react'
 import { Check, Copy } from 'lucide-react'
 import { openExternal } from './external-link'
+import {
+  isRtl,
+  splitSegments,
+  parseList,
+  type ListNode,
+} from './markdown-parsers'
 
 // ─── Inline formatting ───────────────────────────────────────────────────────
 
 function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = []
   const pattern =
-    /(\*\*\*[^*]+\*\*\*)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(`[^`]+`)|(\[[^\]]+\]\((https?:\/\/[^)\s]+)\))|(\[\d+\])|(~~[^~]+~~)/g
+    /(\*\*\*[^*]+\*\*\*)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(`[^`]+`)|(\[[^\]]+\]\((https?:\/\/[^)\s]+)\))|(\[\d+\])|(~~[^~]+~~)|(==[^=]+==)|(\$\$[^$]+\$\$)|(\$[^$\n]+\$)/g
   let last = 0
   let m: RegExpExecArray | null
   let i = 0
@@ -84,6 +94,24 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
         <em key={key} className="italic">
           {token.slice(1, -1)}
         </em>
+      )
+    } else if (token.startsWith('==')) {
+      nodes.push(
+        <mark key={key} className="md-highlight">
+          {token.slice(2, -2)}
+        </mark>
+      )
+    } else if (token.startsWith('$$')) {
+      nodes.push(
+        <span key={key} className="md-math md-math-block" dir="ltr">
+          {token.slice(2, -2)}
+        </span>
+      )
+    } else if (token.startsWith('$')) {
+      nodes.push(
+        <span key={key} className="md-math" dir="ltr">
+          {token.slice(1, -1)}
+        </span>
       )
     }
     last = m.index + token.length
@@ -170,33 +198,26 @@ function CodeBlock({ code, lang, live }: { code: string; lang?: string; live?: b
 
 // ─── Block parsing ───────────────────────────────────────────────────────────
 
-interface Segments {
-  text: string
-  fence?: { lang: string; code: string; live: boolean }
-}
-
-function splitSegments(text: string): Segments[] {
-  const segments: Segments[] = []
-  const re = /```(\w*)\n?([\s\S]*?)(?:```|$)/g
-  let last = 0
-  let m: RegExpExecArray | null
-
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) segments.push({ text: text.slice(last, m.index) })
-    // A fence is "live" (still streaming) when no closing ``` follows it.
-    const closed = m[0].endsWith('```')
-    segments.push({
-      text: '',
-      fence: {
-        lang: m[1] || '',
-        code: m[2].replace(/\n$/, ''),
-        live: !closed,
-      },
-    })
-    last = m.index + m[0].length
-  }
-  if (last < text.length) segments.push({ text: text.slice(last) })
-  return segments
+function renderList(nodes: ListNode[], keyPrefix: string): React.ReactNode {
+  const Tag = nodes.some((n) => n.ordered) ? 'ol' : 'ul'
+  return (
+    <Tag key={keyPrefix} dir="auto" className={Tag === 'ol' ? 'md-ol' : 'md-ul'}>
+      {nodes.map((n, i) => (
+        <li key={i} className={n.checked === undefined ? undefined : 'md-task'}>
+          {n.checked !== undefined && (
+            <span
+              className={`md-checkbox ${n.checked ? 'md-checkbox--on' : ''}`}
+              aria-hidden
+            >
+              {n.checked ? '✓' : ''}
+            </span>
+          )}
+          <span className="md-li-body">{renderInline(n.text, `${keyPrefix}-${i}`)}</span>
+          {n.children && n.children.length > 0 && renderList(n.children, `${keyPrefix}-${i}-c`)}
+        </li>
+      ))}
+    </Tag>
+  )
 }
 
 function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
@@ -207,12 +228,19 @@ function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
         const trimmed = block.trim()
         if (!trimmed) return null
         const key = `${keyPrefix}-${bi}`
+        // Persian answers need an explicit direction so punctuation, quotes and
+        // table columns stop mirroring incorrectly.
+        const dir = isRtl(trimmed) ? 'rtl' : 'ltr'
 
         // Headings
         const heading = trimmed.match(/^(#{1,3})\s+(.*)$/)
         if (heading && !trimmed.includes('\n')) {
           const Tag = (['h1', 'h2', 'h3'] as const)[heading[1].length - 1]
-          return <Tag key={key}>{renderInline(heading[2], key)}</Tag>
+          return (
+            <Tag key={key} dir={dir}>
+              {renderInline(heading[2], key)}
+            </Tag>
+          )
         }
 
         // Horizontal rule
@@ -221,7 +249,7 @@ function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
         // Blockquote
         if (trimmed.startsWith('>')) {
           return (
-            <blockquote key={key}>
+            <blockquote key={key} dir={dir}>
               {trimmed
                 .split('\n')
                 .map((l) => l.replace(/^>\s?/, ''))
@@ -241,48 +269,44 @@ function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
               l.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map((c) => c.trim())
             const headers = parseRow(lines[0])
             const rows = lines.slice(2).map(parseRow)
+            // Pad short rows so columns stay square.
+            const cols = headers.length
+            const norm = (r: string[]) =>
+              r.length === cols ? r : [...r, ...Array(cols - r.length).fill('')]
             return (
-              <table key={key}>
-                <thead>
-                  <tr>
-                    {headers.map((h, hi) => (
-                      <th key={hi}>{renderInline(h, `${key}-h-${hi}`)}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, ri) => (
-                    <tr key={ri}>
-                      {row.map((cell, ci) => (
-                        <td key={ci}>{renderInline(cell, `${key}-${ri}-${ci}`)}</td>
+              // Tables scroll horizontally rather than squeezing on a phone.
+              <div key={key} className="md-table-scroll" dir={dir}>
+                <table>
+                  <thead>
+                    <tr>
+                      {headers.map((h, hi) => (
+                        <th key={hi}>{renderInline(h, `${key}-h-${hi}`)}</th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, ri) => (
+                      <tr key={ri}>
+                        {norm(row).map((cell, ci) => (
+                          <td key={ci}>{renderInline(cell, `${key}-${ri}-${ci}`)}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )
           }
         }
 
-        // Lists — supports 2-level nesting with continuation lines
+        // Lists — supports nesting by indentation, plus GFM task lists
         const lines = trimmed.split('\n')
-        const isUl = lines.every((l) => /^\s*[-*+]\s+/.test(l))
-        const isOl = lines.every((l) => /^\s*\d+[.)]\s+/.test(l))
-        if (isUl || isOl) {
-          const items = lines.map((l) => l.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, ''))
-          const Tag = isUl ? 'ul' : 'ol'
-          return (
-            <Tag key={key} dir="auto">
-              {items.map((item, ii) => (
-                <li key={ii}>{renderInline(item, `${key}-${ii}`)}</li>
-              ))}
-            </Tag>
-          )
-        }
+        const list = parseList(lines)
+        if (list) return renderList(list, key)
 
         // Paragraph
         return (
-          <p key={key} className="whitespace-pre-wrap">
+          <p key={key} dir={dir} className="whitespace-pre-wrap">
             {lines.map((line, li) => (
               <span key={li}>
                 {renderInline(line, `${key}-${li}`)}
@@ -304,6 +328,10 @@ export function Markdown({ text, className = '' }: { text: string; className?: s
       {segments.map((seg, si) =>
         seg.fence ? (
           <CodeBlock key={si} code={seg.fence.code} lang={seg.fence.lang} live={seg.fence.live} />
+        ) : seg.math !== undefined ? (
+          <pre key={si} className="md-math-block" dir="ltr">
+            {seg.math}
+          </pre>
         ) : (
           <TextBlocks key={si} text={seg.text} keyPrefix={`s${si}`} />
         )

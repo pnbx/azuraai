@@ -85,8 +85,11 @@ async function planQueries(
           role: 'system',
           content:
             'You generate web search queries. Given a user question, output ' +
-            'exactly 2 diverse search queries, one per line, no numbering, ' +
-            'no quotes, no explanation. Respond in the language of the question.',
+            'exactly 4 diverse search queries, one per line, no numbering, ' +
+            'no quotes, no explanation. Vary them: one for the general ' +
+            'answer, one for recent news or current data, one for an ' +
+            'authoritative or official source, and one for practical details ' +
+            'or examples. Respond in the language of the question.',
         },
         { role: 'user', content: opts.userQuestion },
       ],
@@ -98,7 +101,7 @@ async function planQueries(
     .split('\n')
     .map((l) => l.replace(/^[-*\d.\s"'`]+/, '').trim())
     .filter((l) => l.length > 2)
-    .slice(0, 3)
+    .slice(0, 4)
 
   return queries.length > 0 ? queries : [opts.userQuestion]
 }
@@ -116,8 +119,8 @@ async function searchTavily(
     body: JSON.stringify({
       api_key: tavilyApiKey,
       query,
-      max_results: 3,
-      search_depth: 'basic',
+      max_results: 8,
+      search_depth: 'advanced',
     }),
     signal,
   })
@@ -147,7 +150,7 @@ async function searchWikipedia(
   const lang = RTL_RE.test(query) ? 'fa' : 'en'
   const endpoint =
     `https://${lang}.wikipedia.org/w/rest.php/v1/search/page?q=` +
-    `${encodeURIComponent(query)}&limit=3`
+    `${encodeURIComponent(query)}&limit=8`
 
   try {
     const res = await fetch(endpoint, {
@@ -180,6 +183,63 @@ async function searchWikipedia(
   }
 }
 
+/**
+ * DuckDuckGo Instant Answer API — free, no key, and unlike Wikipedia it
+ * indexes the open web, so it is a much better fallback when Tavily is not
+ * configured. Returns few results, so it is used last.
+ */
+async function searchDuckDuckGo(
+  query: string,
+  signal?: AbortSignal
+): Promise<ResearchSource[]> {
+  const endpoint =
+    'https://api.duckduckgo.com/?format=json&no_html=1&no_redirect=1&skip_disambig=1&q=' +
+    encodeURIComponent(query)
+
+  try {
+    const res = await fetch(endpoint, {
+      headers: { 'User-Agent': 'AzuraAI/1.0 (research fallback)' },
+      signal,
+    })
+    if (!res.ok) return []
+
+    const data = (await res.json()) as {
+      AbstractText?: string
+      AbstractURL?: string
+      Heading?: string
+      RelatedTopics?: Array<{
+        Text?: string
+        FirstURL?: string
+        Topics?: Array<{ Text?: string; FirstURL?: string }>
+      }>
+    }
+
+    const out: ResearchSource[] = []
+    if (data.AbstractText && data.AbstractURL) {
+      out.push({
+        title: data.Heading || query,
+        url: data.AbstractURL,
+        snippet: String(data.AbstractText).slice(0, 600),
+      })
+    }
+    for (const topic of data.RelatedTopics ?? []) {
+      // Some topics are just category headers wrapping nested Topics.
+      const children = topic.Topics?.length ? topic.Topics : [topic]
+      for (const child of children) {
+        if (!child.FirstURL || !child.Text) continue
+        out.push({
+          title: child.Text.split(' - ')[0].slice(0, 120),
+          url: child.FirstURL,
+          snippet: String(child.Text).slice(0, 600),
+        })
+      }
+    }
+    return out.slice(0, 6)
+  } catch {
+    return []
+  }
+}
+
 async function searchAll(
   queries: string[],
   opts: ResearchOptions,
@@ -193,11 +253,16 @@ async function searchAll(
         const tav = await searchTavily(q, opts.tavilyApiKey, opts.signal)
         if (tav.length > 0) return tav
       }
-      return searchWikipedia(q, opts.signal)
+      const wiki = await searchWikipedia(q, opts.signal)
+      if (wiki.length > 0) return wiki
+      // Wikipedia is encyclopaedic and often empty for local or very current
+      // topics, so fall through to the open web before giving up.
+      return searchDuckDuckGo(q, opts.signal)
     })
   )
 
-  // Dedup by URL, keep best 6
+  // Dedup by URL, keep the best 12 so the answer can cite a real spread of
+  // evidence instead of three near-identical pages.
   const seen = new Set<string>()
   const sources = batches
     .flat()
@@ -206,7 +271,7 @@ async function searchAll(
       seen.add(s.url)
       return true
     })
-    .slice(0, 6)
+    .slice(0, 12)
 
   events.onSources(sources)
   return sources
@@ -247,7 +312,13 @@ export async function runResearch(
       content:
         'You are Azura in research mode. Answer the user question using the ' +
         'provided web sources. Cite sources inline as [1], [2] etc. If the ' +
-        'sources are insufficient, say so. Respond in the language of the question.' +
+        'sources are insufficient, say so. Respond in the language of the question.\n\n' +
+        'Structure the answer for a phone screen: lead with the direct answer ' +
+        'in one or two sentences, then a short paragraph or a bullet list of ' +
+        'the key findings, then a markdown table when you are comparing more ' +
+        'than two things. Use ## headings for distinct sections. Every ' +
+        'non-obvious claim needs a [n] citation. Do not mention the sources ' +
+        'list itself — just cite. If sources disagree, say so explicitly.' +
         (opts.systemExtra ? `\n\n${opts.systemExtra}` : ''),
     },
     ...(opts.history ?? []),

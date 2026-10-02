@@ -21,8 +21,19 @@ import {
 } from 'lucide-react'
 import type { Conversation } from './conversations'
 import { groupByRecency } from './conversations'
+import { useI18n, type I18nKey } from './i18n-provider'
 
 const spring = { type: 'spring' as const, stiffness: 380, damping: 32 }
+
+/** Maps groupByRecency's stable ids onto i18n keys. */
+const GROUP_LABEL_KEYS: Record<string, I18nKey> = {
+  pinned: 'drawer.pinned',
+  today: 'drawer.groupToday',
+  yesterday: 'drawer.groupYesterday',
+  week: 'drawer.groupWeek',
+  month: 'drawer.groupMonth',
+  older: 'drawer.groupOlder',
+}
 
 /** Relative timestamp for rows — Today/Yesterday handled by group labels. */
 function relTime(ts: number): string {
@@ -52,17 +63,18 @@ export interface DrawerProps {
 }
 
 function DeleteConfirm({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  const { t } = useI18n()
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="flex-1 text-muted-foreground">Delete chat?</span>
+      <span className="flex-1 text-muted-foreground">{t('drawer.deleteChat')}</span>
       <button
         onClick={onConfirm}
         className="rounded-md bg-destructive px-2 py-1 font-medium text-destructive-foreground"
       >
-        Delete
+        {t('drawer.delete')}
       </button>
       <button onClick={onCancel} className="rounded-md px-2 py-1 text-muted-foreground hover:bg-muted">
-        Cancel
+        {t('drawer.cancel')}
       </button>
     </div>
   )
@@ -201,6 +213,7 @@ export function ConversationsDrawer(props: DrawerProps) {
     onCollapsedChange,
   } = props
 
+  const { t, dir } = useI18n()
   const [query, setQuery] = React.useState('')
   const searchRef = React.useRef<HTMLInputElement>(null)
   const filtered = React.useMemo(() => {
@@ -216,7 +229,7 @@ export function ConversationsDrawer(props: DrawerProps) {
   const groups = groupByRecency(filtered)
 
   const content = (
-    <div className="flex h-full flex-col bg-sidebar">
+    <div className="flex h-full flex-col bg-sidebar" dir={dir}>
       {/* New chat */}
       <div className="flex items-center gap-2 px-3 pb-2 pt-3 pt-safe">
         <button
@@ -224,7 +237,7 @@ export function ConversationsDrawer(props: DrawerProps) {
           className="flex flex-1 items-center gap-2 rounded-xl border border-sidebar-border bg-card px-3 py-2.5 text-sm font-medium shadow-sm transition-colors hover:border-border-strong"
         >
           <MessageSquarePlus className="h-4 w-4 text-brand-strong" />
-          New chat
+          {t('chat.newChat')}
         </button>
         {/* Mobile close */}
         <button
@@ -245,7 +258,7 @@ export function ConversationsDrawer(props: DrawerProps) {
             // Uncontrolled: keeps Persian/Arabic IME composition intact.
             defaultValue=""
             onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
-            placeholder="Search chats…"
+            placeholder={t('drawer.searchPlaceholder')}
             className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           {query ? (
@@ -272,7 +285,7 @@ export function ConversationsDrawer(props: DrawerProps) {
           groups.map((g) => (
             <div key={g.label} className="mb-3">
               <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {g.label}
+                {t(GROUP_LABEL_KEYS[g.label] ?? 'drawer.groupOlder')}
               </p>
               <div className="space-y-0.5">
                 {g.items.map((c) => (

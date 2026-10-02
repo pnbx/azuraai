@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { AppChatScreen } from '@/components/app/chat-screen'
+import { I18nProvider } from '@/components/app/i18n-provider'
 import { getServerUser } from '@/lib/auth/server'
 
 export const metadata: Metadata = {
@@ -16,20 +17,20 @@ export const viewport: Viewport = {
 }
 
 export default async function AppChatPage() {
-  // Publicly viewable: unauthenticated visitors get demo mode (the chat
-  // routes 401 and the client falls back to the simulated demo stream).
-  // All real features remain server-side auth-protected.
-  let authed = false
-  try {
-    await getServerUser()
-    authed = true
-  } catch {
-    authed = false
-  }
+  // No sign-in in the app: everyone lands in chat. A session is only a bonus —
+  // it turns on long-term memory for whoever happens to be logged in on the
+  // web — so this never blocks rendering.
+  const authed = await getServerUser()
+    .then(() => true)
+    .catch(() => false)
 
   return (
     <div className="h-dvh">
-      <AppChatScreen authed={authed} />
+      {/* The locale itself is resolved by the pre-paint script in the root
+          layout head; this only supplies the store. */}
+      <I18nProvider>
+        <AppChatScreen authed={authed} />
+      </I18nProvider>
     </div>
   )
 }

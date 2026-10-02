@@ -209,12 +209,14 @@ describe('/api/app/chat guards', () => {
     }) as unknown as Request
   }
 
-  it('401s without a session', async () => {
+  it('serves guests without a session — the app has no sign-in', async () => {
+    // Auth became optional: a guest is a first-class caller, so the request
+    // must reach the model instead of bouncing off a 401.
     mockGetUser.mockRejectedValue(new Error('Unauthenticated'))
     const { POST } = await importRoute()
 
     const res = await POST(makeRequest({ messages: [{ role: 'user', content: 'hi' }] }))
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(200)
   })
 
   it('400s on malformed bodies and oversized messages', async () => {

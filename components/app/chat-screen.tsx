@@ -56,6 +56,7 @@ import {
   downloadTextFile,
   exportFilename,
 } from './text-utils'
+import { useI18n } from './i18n-provider'
 
 const spring = { type: 'spring' as const, stiffness: 380, damping: 30 }
 
@@ -80,13 +81,19 @@ function saveDraft(value: string) {
   }
 }
 
-const MODES: Array<{ key: ChatMode; label: string; icon: typeof Zap; hint: string }> = [
-  { key: 'fast', label: 'Fast', icon: Zap, hint: 'Quick answers' },
-  { key: 'thinking', label: 'Deep thinking', icon: Brain, hint: 'R1-class reasoning' },
-  { key: 'research', label: 'Research', icon: Globe, hint: 'Web-grounded answers' },
+const MODES: Array<{
+  key: ChatMode
+  labelKey: 'chat.mode.fast' | 'chat.mode.thinking' | 'chat.mode.research'
+  icon: typeof Zap
+  hint: string
+}> = [
+  { key: 'fast', labelKey: 'chat.mode.fast', icon: Zap, hint: 'Quick answers' },
+  { key: 'thinking', labelKey: 'chat.mode.thinking', icon: Brain, hint: 'R1-class reasoning' },
+  { key: 'research', labelKey: 'chat.mode.research', icon: Globe, hint: 'Web-grounded answers' },
 ]
 
 export function AppChatScreen({ authed = true }: { authed?: boolean }) {
+  const { t, dir } = useI18n()
   // ── Conversations ──────────────────────────────────────────────────────────
   const { conversations, upsert, remove, togglePin, rename } = useConversations()
   const [activeId, setActiveId] = React.useState<string | null>(null)
@@ -560,7 +567,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
   const liveStages = liveAssistant ? (lastMsg.stages ?? []) : []
 
   return (
-    <div className="flex h-[100dvh] w-full flex-col overflow-hidden">
+    <div className="flex h-[100dvh] w-full flex-col overflow-hidden" dir={dir}>
       <div className="mx-auto flex h-full w-full max-w-4xl flex-1 overflow-hidden lg:flex">
         {/* Conversations drawer */}
         <ConversationsDrawer
@@ -599,24 +606,15 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                 Demo mode
               </span>
             ) : null}
-            {!authed ? (
-              <a
-                href="/auth/login"
-                className="rounded-full bg-brand px-3 py-1.5 text-xs font-medium text-white shadow-sm"
-              >
-                Sign in
-              </a>
-            ) : (
-              <button
-                onClick={handleExport}
-                disabled={messages.length === 0}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
-                aria-label="Export conversation"
-                title="Export conversation"
-              >
-                <Download className="h-4 w-4" />
-              </button>
-            )}
+            <button
+              onClick={handleExport}
+              disabled={messages.length === 0}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+              aria-label="Export conversation"
+              title="Export conversation"
+            >
+              <Download className="h-4 w-4" />
+            </button>
           </header>
 
           {/* Undo delete toast */}
@@ -629,13 +627,13 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                 className="mx-3 mt-2 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 text-sm shadow-lg"
               >
                 <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                  Deleted “{undo.conv.title}”
+                  {t('chat.deleted')} “{undo.conv.title}”
                 </span>
                 <button
                   onClick={handleUndoDelete}
                   className="shrink-0 text-xs font-semibold text-brand-strong underline underline-offset-2"
                 >
-                  Undo
+                  {t('chat.undo')}
                 </button>
               </motion.div>
             ) : null}
@@ -659,7 +657,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
           <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-3xl px-4 pb-6 pt-4">
               {messages.length === 0 ? (
-                <EmptyState mode={mode} authed={authed} onSuggestion={(s) => setComposerText(s)} />
+                <EmptyState mode={mode} onSuggestion={(s) => setComposerText(s)} />
               ) : null}
 
               <AnimatePresence initial={false}>
@@ -801,7 +799,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                         }`}
                       >
                         <Icon className="h-3.5 w-3.5" />
-                        {m.label}
+                        {t(m.labelKey)}
                       </span>
                     </button>
                   )
@@ -836,12 +834,12 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                     rows={1}
                     placeholder={
                       voice.listening
-                        ? 'Listening…'
+                        ? t('chat.listening')
                         : attachments.length > 0
-                          ? 'Ask about this image…'
+                          ? t('chat.placeholderImage')
                           : mode === 'research'
-                            ? 'Ask anything — I will search the web…'
-                            : 'Message Azura…'
+                            ? t('chat.placeholderResearch')
+                            : t('chat.placeholder')
                     }
                     className="max-h-[140px] w-full resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                   />
@@ -867,7 +865,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                           ? 'bg-brand text-white'
                           : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                       }`}
-                      aria-label={voice.listening ? 'Stop dictation' : 'Start dictation'}
+                      aria-label={voice.listening ? t('chat.stopDictation') : t('chat.startDictation')}
                     >
                       {voice.listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                     </button>
@@ -928,7 +926,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
               </div>
 
               <p className="pt-1.5 text-center text-[10px] text-muted-foreground">
-                Azura can make mistakes — verify important info.
+                {t('chat.disclaimer')}
               </p>
             </div>
           </motion.div>
@@ -942,29 +940,16 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
 
 function EmptyState({
   mode,
-  authed,
   onSuggestion,
 }: {
   mode: ChatMode
-  authed: boolean
   onSuggestion: (text: string) => void
 }) {
+  const { t } = useI18n()
   const suggestions: Record<ChatMode, string[]> = {
-    fast: [
-      'Explain quantum computing like I am five',
-      'به فارسی یک شعر کوتاه درباره باران بگو',
-      'Write a regex for email validation',
-    ],
-    thinking: [
-      'A bat and ball cost $1.10… solve it step by step',
-      'Plan a 3-day Tehran itinerary on a budget',
-      'Compare REST vs GraphQL for my startup',
-    ],
-    research: [
-      'Latest news about AI regulation in 2026',
-      'Best free AI APIs right now',
-      'قیمت لپتاپ مناسب برای برنامه‌نویسی',
-    ],
+    fast: [t('sug.fast.0'), t('sug.fast.1'), t('sug.fast.2')],
+    thinking: [t('sug.thinking.0'), t('sug.thinking.1'), t('sug.thinking.2')],
+    research: [t('sug.research.0'), t('sug.research.1'), t('sug.research.2')],
   }
 
   return (
@@ -982,23 +967,14 @@ function EmptyState({
         <AzuraLogoAnimated size={38} />
       </motion.div>
       <div>
-        <h2 className="text-lg font-semibold">Hey, I am Azura</h2>
+        <h2 className="text-lg font-semibold">{t('chat.emptyTitle')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {mode === 'fast'
-            ? 'Quick answers, powered by free models.'
+            ? t('chat.emptyFast')
             : mode === 'thinking'
-              ? 'I will show my reasoning as I think.'
-              : 'I will plan, search the web, and cite sources.'}
+              ? t('chat.emptyThinking')
+              : t('chat.emptyResearch')}
         </p>
-        {!authed ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Preview mode —{' '}
-            <a href="/auth/login" className="text-brand-strong underline underline-offset-2">
-              log in
-            </a>{' '}
-            for the real thing.
-          </p>
-        ) : null}
       </div>
       <div className="w-full max-w-md space-y-2 px-4">
         {suggestions[mode].map((s, i) => (
@@ -1009,7 +985,7 @@ function EmptyState({
             transition={{ delay: 0.08 * i, ...spring }}
             whileTap={{ scale: 0.98 }}
             onClick={() => onSuggestion(s)}
-            className="w-full rounded-xl border border-border bg-card/60 px-4 py-2.5 text-left text-sm backdrop-blur transition-colors hover:border-border-strong"
+            className="w-full rounded-xl border border-border bg-card/60 px-4 py-2.5 text-start text-sm backdrop-blur transition-colors hover:border-border-strong"
           >
             {s}
           </motion.button>

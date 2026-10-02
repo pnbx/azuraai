@@ -26,6 +26,7 @@ import { useTheme } from '@/components/theme'
 import { AzuraLogo } from '@/components/brand/logo'
 import { useConversations } from './use-conversations'
 import { useMemory } from './use-memory'
+import { useI18n } from './i18n-provider'
 import { haptic } from './haptics'
 
 const spring = { type: 'spring' as const, stiffness: 340, damping: 28 }
@@ -65,6 +66,7 @@ function Row({
 }
 
 export function AppSettingsPanel({ authed }: { authed: boolean }) {
+  const { t, locale } = useI18n()
   const { theme } = useTheme()
   const { conversations, remove } = useConversations()
   const memory = useMemory()
@@ -117,16 +119,26 @@ export function AppSettingsPanel({ authed }: { authed: boolean }) {
         <section className="overflow-hidden rounded-2xl border border-border bg-card">
           <div className="flex items-center gap-2 border-b border-border px-4 py-3">
             <Palette className="h-4 w-4 text-brand-strong" />
-            <h2 className="text-sm font-semibold">Appearance</h2>
+            <h2 className="text-sm font-semibold">{t('settings.appearance')}</h2>
           </div>
           <div className="flex items-center justify-between px-4 py-3.5">
             <div>
-              <p className="text-sm font-medium">Theme</p>
+              <p className="text-sm font-medium">{t('settings.theme')}</p>
               <p className="text-xs text-muted-foreground">
-                {theme === 'dark' ? 'Dark (default)' : theme === 'light' ? 'Light' : 'Follow system'}
+                {theme === 'dark' ? t('settings.themeDark') : theme === 'light' ? t('settings.themeLight') : t('settings.themeSystem')}
               </p>
             </div>
             <ThemeSelector current={theme} />
+          </div>
+          {/* Manual override of the auto-detected device language. */}
+          <div className="flex items-center justify-between border-t border-border px-4 py-3.5">
+            <div>
+              <p className="text-sm font-medium">{t('settings.language')}</p>
+              <p className="text-xs text-muted-foreground">
+                {locale === 'fa' ? t('settings.langFa') : t('settings.langEn')}
+              </p>
+            </div>
+            <LocaleSelector />
           </div>
         </section>
 
@@ -144,18 +156,18 @@ export function AppSettingsPanel({ authed }: { authed: boolean }) {
         <section className="overflow-hidden rounded-2xl border border-border bg-card">
           <div className="flex items-center gap-2 border-b border-border px-4 py-3">
             <Plug className="h-4 w-4 text-brand-strong" />
-            <h2 className="text-sm font-semibold">Integrations</h2>
+            <h2 className="text-sm font-semibold">{t('settings.integrations')}</h2>
           </div>
           <Row
             icon={<Plug className="h-4 w-4" />}
-            title="Google account"
-            subtitle="Gmail & Calendar daily brief"
+            title={t('settings.google')}
+            subtitle={t('settings.googleSub')}
             onClick={authed ? () => (window.location.href = '/app/integrations') : undefined}
             trailing={
               authed ? (
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               ) : (
-                <span className="text-xs text-muted-foreground">Sign in required</span>
+                <span className="text-xs text-muted-foreground">{t('settings.notAvailable')}</span>
               )
             }
           />
@@ -165,12 +177,12 @@ export function AppSettingsPanel({ authed }: { authed: boolean }) {
         <section className="overflow-hidden rounded-2xl border border-border bg-card">
           <div className="flex items-center gap-2 border-b border-border px-4 py-3">
             <ShieldCheck className="h-4 w-4 text-brand-strong" />
-            <h2 className="text-sm font-semibold">Your data</h2>
+            <h2 className="text-sm font-semibold">{t('settings.data')}</h2>
           </div>
           <Row
             icon={<Download className="h-4 w-4" />}
-            title="Export chat history"
-            subtitle="Download as JSON"
+            title={t('settings.exportChats')}
+            subtitle={t('settings.exportChatsSub')}
             onClick={exportData}
             trailing={
               exported ? (
@@ -183,13 +195,13 @@ export function AppSettingsPanel({ authed }: { authed: boolean }) {
           {confirmClear ? (
             <div className="flex items-center gap-2 border-t border-border px-4 py-3">
               <span className="flex-1 text-xs text-muted-foreground">
-                Delete all {conversations.length} chats? This cannot be undone.
+                {t('settings.clearConfirm')} ({conversations.length})
               </span>
               <button
                 onClick={clearAll}
                 className="rounded-lg bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground"
               >
-                Delete all
+                {t('settings.clearChats')}
               </button>
               <button
                 onClick={() => setConfirmClear(false)}
@@ -201,8 +213,8 @@ export function AppSettingsPanel({ authed }: { authed: boolean }) {
           ) : (
             <Row
               icon={<Trash2 className="h-4 w-4" />}
-              title="Clear all chats"
-              subtitle={cleared ? 'Done ✓' : 'Remove every conversation from this device'}
+              title={t('settings.clearChats')}
+              subtitle={cleared ? t('settings.cleared') : t('settings.clearChatsSub')}
               onClick={() => setConfirmClear(true)}
               danger
             />
@@ -213,7 +225,7 @@ export function AppSettingsPanel({ authed }: { authed: boolean }) {
         <section className="overflow-hidden rounded-2xl border border-border bg-card">
           <Row
             icon={<MessageSquare className="h-4 w-4" />}
-            title="Back to chat"
+            title={t('settings.back')}
             onClick={() => (window.location.href = '/app')}
           />
         </section>
@@ -236,12 +248,43 @@ export function AppSettingsPanel({ authed }: { authed: boolean }) {
   )
 }
 
+/** Two-way switch for the app language, overriding device auto-detection. */
+function LocaleSelector() {
+  const { locale, setLocale, t } = useI18n()
+  const options: Array<{ key: 'fa' | 'en'; label: string }> = [
+    { key: 'fa', label: 'فارسی' },
+    { key: 'en', label: 'English' },
+  ]
+  return (
+    <div className="inline-flex items-center rounded-full border border-border bg-muted p-0.5 text-xs">
+      {options.map((o) => (
+        <button
+          key={o.key}
+          onClick={() => {
+            setLocale(o.key)
+            haptic('light')
+          }}
+          aria-label={o.key === 'fa' ? t('settings.langFa') : t('settings.langEn')}
+          className={`rounded-full px-3 py-1 font-medium transition-colors ${
+            locale === o.key
+              ? 'bg-card text-card-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function ThemeSelector({ current }: { current: string }) {
   const { setTheme } = useTheme()
+  const { t } = useI18n()
   const options: Array<{ key: 'light' | 'dark' | 'system'; label: string }> = [
-    { key: 'light', label: 'Light' },
-    { key: 'dark', label: 'Dark' },
-    { key: 'system', label: 'Auto' },
+    { key: 'light', label: t('settings.themeLight') },
+    { key: 'dark', label: t('settings.themeDark') },
+    { key: 'system', label: t('settings.themeSystem') },
   ]
   return (
     <div className="inline-flex items-center rounded-full border border-border bg-muted p-0.5 text-xs">
@@ -286,6 +329,7 @@ function MemorySection({
   memoryAdded: boolean
   setMemoryAdded: (v: boolean) => void
 }) {
+  const { t } = useI18n()
   const [confirmForgetAll, setConfirmForgetAll] = React.useState(false)
 
   // Sync the mirror once on mount (and whenever the user re-opens settings).
@@ -311,10 +355,10 @@ function MemorySection({
       <section className="overflow-hidden rounded-2xl border border-border bg-card">
         <div className="flex items-center gap-2 border-b border-border px-4 py-3">
           <Brain className="h-4 w-4 text-brand-strong" />
-          <h2 className="text-sm font-semibold">Memory</h2>
+          <h2 className="text-sm font-semibold">{t('settings.memory')}</h2>
         </div>
         <p className="px-4 py-3.5 text-xs text-muted-foreground">
-          Sign in to let Azura remember facts about you across chats.
+          {t('settings.memoryUnavailable')}
         </p>
       </section>
     )
