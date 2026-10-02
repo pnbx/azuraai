@@ -234,14 +234,24 @@ function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
         // table columns stop mirroring incorrectly.
         const dir = isRtl(trimmed) ? 'rtl' : 'ltr'
 
-        // Headings
-        const heading = trimmed.match(/^(#{1,3})\s+(.*)$/)
-        if (heading && !trimmed.includes('\n')) {
-          const Tag = (['h1', 'h2', 'h3'] as const)[heading[1].length - 1]
+        // Headings. A heading is frequently followed immediately by a list or
+        // table on the next line (only one \n, so they share a block), so peel
+        // the heading off and parse the remainder as its own block.
+        //
+        // No trailing `$` here: without the /m flag it anchors to the end of
+        // the whole block, so a heading followed by a list never matched and
+        // the raw "###" leaked into the reply. Stopping at the newline is the
+        // behaviour we want.
+        const heading = trimmed.match(/^(#{1,6})[ \t]+([^\n]*)/)
+        if (heading) {
+          const level = Math.min(heading[1].length, 6)
+          const Tag = (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const)[level - 1]
+          const rest = trimmed.slice(heading[0].length).replace(/^\n+/, '')
           return (
-            <Tag key={key} dir={dir}>
-              {renderInline(heading[2], key)}
-            </Tag>
+            <React.Fragment key={key}>
+              <Tag dir={dir}>{renderInline(heading[2].trim(), key)}</Tag>
+              {rest.trim() ? <TextBlocks text={rest} keyPrefix={`${key}-r`} /> : null}
+            </React.Fragment>
           )
         }
 
