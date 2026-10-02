@@ -1,4 +1,7 @@
 # Dev-only assets — never needed at runtime
 scripts/
-*.apk
 .env*
+
+# NOTE: *.apk is deliberately NOT ignored. public/downloads/azura-app.apk is
+# the artefact /download serves, so excluding it made the download 404 in
+# production while looking fine locally.
