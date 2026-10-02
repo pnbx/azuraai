@@ -43,6 +43,8 @@ import { ConversationsDrawer } from './drawer'
 import { useVoiceInput } from './voice-input'
 import { useMemory } from './use-memory'
 import { haptic } from './haptics'
+import { ToolSheet, ToolButton, CalcChip } from './tools-panel'
+import { calculate, looksLikeCalculation, type ToolDefinition } from '@/lib/chat-tools'
 import { useAndroidBackButton } from './use-android-back'
 import {
   AttachmentBar,
@@ -160,6 +162,11 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
   // letters vanish mid-word, e.g. سلام → سلا). We keep a boolean mirror
   // for the send button and read the text from the DOM at send time.
   const [hasText, setHasText] = React.useState(false)
+  // Tools: the prompt-action sheet, and the live arithmetic result for
+  // whatever is currently typed. Both are local — no model call — so they
+  // never touch the rate-limited free gateway.
+  const [toolsOpen, setToolsOpen] = React.useState(false)
+  const [calc, setCalc] = React.useState<{ expr: string; result: string } | null>(null)
   const [mode, setMode] = React.useState<ChatMode>('fast')
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const bottomRef = React.useRef<HTMLDivElement>(null)
@@ -226,6 +233,36 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
     setHasText(text.trim().length > 0)
     saveDraft(text)
   }, [])
+
+  // ── On-device arithmetic ────────────────────────────────────────────────
+  // Shown as the user types, so checking 12 × 1500 costs nothing instead of a
+  // model call on a free tier that is already rate-limited.
+  const syncCalc = React.useCallback((text: string) => {
+    if (!looksLikeCalculation(text)) {
+      setCalc(null)
+      return
+    }
+    const r = calculate(text)
+    setCalc(r.ok ? { expr: text.trim(), result: r.display } : null)
+  }, [])
+
+  /** Apply a prompt action: rewrite the draft and send it straight away. */
+  const applyTool = React.useCallback(
+    (tool: ToolDefinition) => {
+      setToolsOpen(false)
+      const current = textareaRef.current?.value ?? ''
+      if (!current.trim()) {
+        // Nothing to work with. Open the draft field for the user rather than
+        // sending a bare instruction the model cannot act on.
+        textareaRef.current?.focus()
+        return
+      }
+      const next = tool.build(current.trim())
+      setComposerText(next)
+      void handleSend({ text: next, mode, history: messages })
+    },
+    [setComposerText, handleSend, mode, messages]
+  )
 
   // ── Read aloud ────────────────────────────────────────────────────────
   const speech = useSpeech()
@@ -385,16 +422,20 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
     haptic('light')
 
     let history: ChatMsg[]
+    const userMsg: ChatMsg = {
+      role: 'user',
+      content: text,
+      ts: Date.now(),
+      ...(pendingImages.length > 0 ? { images: pendingImages } : {}),
+    }
     if (override) {
-      history = override.history
+      // The prompt tools rewrite the question before sending, so the rewritten
+      // text becomes the user message. Previously this branch used the passed
+      // history verbatim and never appended the user turn, so tapping a tool
+      // appeared to do nothing.
+      history = [...override.history, userMsg]
       setMessages(history)
     } else {
-      const userMsg: ChatMsg = {
-        role: 'user',
-        content: text,
-        ts: Date.now(),
-        ...(pendingImages.length > 0 ? { images: pendingImages } : {}),
-      }
       history = [...messages, userMsg]
       setMessages(history)
       setComposerText('')
@@ -742,7 +783,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                   className="shrink-0 font-semibold underline underline-offset-2"
                 >
                   <RotateCcw className="mr-1 inline h-3.5 w-3.5" />
-                  Retry
+                  {t('chat.retry')}
                 </button>
                 <button onClick={dismissError} aria-label={t('chat.dismissError')}>
                   <X className="h-4 w-4" />
@@ -804,6 +845,10 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                     </button>
                   )
                 })}
+                {/* Prompt tools — a sheet of one-tap rewrites. */}
+                <div className="ms-1 shrink-0">
+                  <ToolButton onClick={() => setToolsOpen(true)} />
+                </div>
               </div>
 
               <div className="flex items-end gap-2">
@@ -824,6 +869,7 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                       e.target.style.height = 'auto'
                       e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`
                       saveDraft(e.target.value)
+                      syncCalc(e.target.value)
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
@@ -871,6 +917,20 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                     </button>
                   ) : null}
                 </motion.div>
+
+                {/* Arithmetic typed into the composer, resolved on-device. */}
+                <AnimatePresence>
+                  {calc ? (
+                    <CalcChip
+                      expression={calc.expr}
+                      result={calc.result}
+                      onUse={(value) => {
+                        setComposerText(value)
+                        syncCalc(value)
+                      }}
+                    />
+                  ) : null}
+                </AnimatePresence>
 
                 {/* ChatGPT-style morphing button: muted circle → brand
                     gradient arrow when there's text → red stop while
@@ -932,6 +992,10 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
           </motion.div>
         </div>
       </div>
+
+      {/* Prompt tools live outside the message column so the sheet can cover
+          the whole screen while the composer stays mounted behind it. */}
+      <ToolSheet open={toolsOpen} onClose={() => setToolsOpen(false)} onPick={applyTool} />
     </div>
   )
 }
