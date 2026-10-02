@@ -86,7 +86,24 @@ function zibalEndpointUrl(
   return `${base}?ep=${endpoint}`;
 }
 
-/** POST a payload to Zibal (directly, or through the static-IP relay). */
+/** The relay's shared host intermittently fails its outbound TLS handshake
+ *  to gateway.zibal.ir (observed ~2 of every 3 attempts on realy.theazizi.space).
+ *  A 502 with `upstream_failed` is that transient failure, so retry it a few
+ *  times with backoff rather than surfacing a failed checkout to the user. */
+const RELAY_ATTEMPTS = 4;
+const RELAY_BACKOFF_MS = [400, 1200, 2500];
+
+function isTransientRelayFailure(status: number): boolean {
+  return status === 502 || status === 503 || status === 504;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** POST a payload to Zibal (directly, or through the static-IP relay).
+ *  Retries only transient relay/upstream failures — a real Zibal answer,
+ *  including a business rejection, is returned to the caller untouched. */
 async function zibalFetch(
   endpoint: 'request' | 'verify' | 'inquiry',
   payload: Record<string, unknown>
@@ -96,11 +113,25 @@ async function zibalFetch(
   if (config.relayUrl && config.relaySecret) {
     headers['x-relay-secret'] = config.relaySecret;
   }
-  return fetch(zibalEndpointUrl(config, endpoint), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  });
+  const url = zibalEndpointUrl(config, endpoint);
+  const body = JSON.stringify(payload);
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < RELAY_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetch(url, { method: 'POST', headers, body });
+      if (attempt === RELAY_ATTEMPTS - 1 || !isTransientRelayFailure(response.status)) {
+        return response;
+      }
+    } catch (error) {
+      // Network-level failure (DNS, connection reset) — also worth retrying.
+      lastError = error;
+      if (attempt === RELAY_ATTEMPTS - 1) throw error;
+    }
+    await sleep(RELAY_BACKOFF_MS[attempt] ?? 2500);
+  }
+
+  throw lastError ?? new Error(`Zibal ${endpoint} unreachable`);
 }
 
 /** Map Zibal verify result code to Azura payment status */
