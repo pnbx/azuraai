@@ -58,3 +58,6 @@ android/.gradle/
 
 # Freebuff desktop app state
 .freebuff/
+
+# Local Telegram agent bridge (personal automation, not part of the app)
+/telegram-agent/
