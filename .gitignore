@@ -34,6 +34,11 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Postgres credentials for one-off migrations (see supabase/live-apply-*.sql).
+# `.env*` above does not match this, and a bare password on disk must never
+# be committable by accident.
+.pgpassword
+
 # vercel
 .vercel
 
