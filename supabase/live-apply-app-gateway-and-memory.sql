@@ -33,6 +33,15 @@
 -- data is read, written or destroyed.
 --
 -- AFTER RUNNING: no deploy is needed. The next request picks the tables up.
+--
+-- STATUS: applied to the live project on 2026-10-03 via the Supabase MCP
+-- apply_migration tool. Two defects in this script were found while applying
+-- it and fixed here, so re-running the older text reintroduces them:
+--   1. increment_app_chat_usage raised 42702 "column reference used is
+--      ambiguous" on every call (RETURNS TABLE declares an OUT param named
+--      `used`). Fixed with an `AS t` alias.
+--   2. REVOKE ... FROM PUBLIC left both functions callable by `anon`.
+--      Fixed by revoking from anon/authenticated explicitly.
 
 -- ============================================================
 -- 1. OpenRouter API keys (server-side pool; plaintext key never returned)
@@ -118,11 +127,26 @@ BEGIN
 END;
 $$;
 
+-- CRITICAL: the anon/authenticated revokes are load-bearing.
+-- REVOKE ... FROM PUBLIC alone does NOT lock these down on Supabase: both
+-- roles hold direct EXECUTE grants on public-schema functions via ALTER
+-- DEFAULT PRIVILEGES. Without these lines pick_openrouter_key — SECURITY
+-- DEFINER, RETURNS api_key — answers any anonymous visitor at
+-- /rest/v1/rpc/pick_openrouter_key with your plaintext OpenRouter keys.
 REVOKE ALL ON FUNCTION public.pick_openrouter_key(INT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.pick_openrouter_key(INT) FROM anon;
+REVOKE ALL ON FUNCTION public.pick_openrouter_key(INT) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.pick_openrouter_key(INT) TO service_role;
 
 -- ============================================================
 -- 4. Atomic per-user daily counter (true upsert, PK conflict target)
+--
+-- NOTE the `AS t` alias: RETURNS TABLE(allowed, used, cap) declares an
+-- implicit OUT parameter named `used`, so an unqualified `used` in the body
+-- is ambiguous between that parameter and the column, and Postgres throws
+-- 42702 on every call. The chat routes allow the request on an RPC error, so
+-- that bug is invisible — the cap silently stops being enforced, exactly as
+-- when the function was missing altogether.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.increment_app_chat_usage(
   p_user_id UUID,
@@ -137,17 +161,21 @@ DECLARE
   v_used INT;
   v_today DATE := (now() AT TIME ZONE 'utc')::date;
 BEGIN
-  INSERT INTO public.app_chat_usage (user_id, usage_date, used)
+  INSERT INTO public.app_chat_usage AS t (user_id, usage_date, used)
   VALUES (p_user_id, v_today, 1)
   ON CONFLICT (user_id, usage_date)
-  DO UPDATE SET used = app_chat_usage.used + 1
-  RETURNING used INTO v_used;
+  DO UPDATE SET used = t.used + 1
+  RETURNING t.used INTO v_used;
 
   RETURN QUERY SELECT (v_used <= p_daily_cap), v_used, p_daily_cap;
 END;
 $$;
 
+-- Without the anon/authenticated revokes, any visitor could inflate another
+-- user's counter and lock them out of the free tier.
 REVOKE ALL ON FUNCTION public.increment_app_chat_usage(UUID, INT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.increment_app_chat_usage(UUID, INT) FROM anon;
+REVOKE ALL ON FUNCTION public.increment_app_chat_usage(UUID, INT) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.increment_app_chat_usage(UUID, INT) TO service_role;
 
 -- ============================================================

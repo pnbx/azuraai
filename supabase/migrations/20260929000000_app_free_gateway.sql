@@ -80,10 +80,27 @@ BEGIN
 END;
 $$;
 
+-- REVOKE ... FROM PUBLIC is NOT sufficient on Supabase. `anon` and
+-- `authenticated` hold *direct* EXECUTE grants on functions in the public
+-- schema via ALTER DEFAULT PRIVILEGES, so revoking only from PUBLIC leaves
+-- both callable by an unauthenticated visitor at POST /rest/v1/rpc/<name>.
+-- pick_openrouter_key is SECURITY DEFINER and RETURNS api_key, so that would
+-- hand every plaintext OpenRouter key to anyone who asked. Revoke from the
+-- roles explicitly. service_role keeps working — the chat routes use it.
 REVOKE ALL ON FUNCTION public.pick_openrouter_key(INT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.pick_openrouter_key(INT) FROM anon;
+REVOKE ALL ON FUNCTION public.pick_openrouter_key(INT) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.pick_openrouter_key(INT) TO service_role;
 
 -- 4. Atomic per-user daily counter (true upsert, PK conflict target)
+--
+-- The target table is aliased `t` and every reference to its `used` column is
+-- qualified. Without that, `RETURNS TABLE(allowed, used, cap)` declares an
+-- implicit OUT parameter named `used`, and the unqualified `used` inside the
+-- body is ambiguous between that parameter and the table column — Postgres
+-- raises 42702 on EVERY call. Since the chat routes allow the request when
+-- the RPC errors, that failure is invisible: the daily cap silently stops
+-- being enforced, exactly as it did when the function was missing entirely.
 CREATE OR REPLACE FUNCTION public.increment_app_chat_usage(
   p_user_id UUID,
   p_daily_cap INT DEFAULT 30
@@ -97,15 +114,20 @@ DECLARE
   v_used INT;
   v_today DATE := (now() AT TIME ZONE 'utc')::date;
 BEGIN
-  INSERT INTO public.app_chat_usage (user_id, usage_date, used)
+  INSERT INTO public.app_chat_usage AS t (user_id, usage_date, used)
   VALUES (p_user_id, v_today, 1)
   ON CONFLICT (user_id, usage_date)
-  DO UPDATE SET used = app_chat_usage.used + 1
-  RETURNING used INTO v_used;
+  DO UPDATE SET used = t.used + 1
+  RETURNING t.used INTO v_used;
 
   RETURN QUERY SELECT (v_used <= p_daily_cap), v_used, p_daily_cap;
 END;
 $$;
 
+-- Same reasoning as pick_openrouter_key: without the anon/authenticated
+-- revokes, any visitor could inflate another user's daily counter and lock
+-- them out of the free tier.
 REVOKE ALL ON FUNCTION public.increment_app_chat_usage(UUID, INT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.increment_app_chat_usage(UUID, INT) FROM anon;
+REVOKE ALL ON FUNCTION public.increment_app_chat_usage(UUID, INT) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.increment_app_chat_usage(UUID, INT) TO service_role;
