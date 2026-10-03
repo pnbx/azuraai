@@ -63,7 +63,19 @@ AS $$
   );
 $$;
 
+-- `REVOKE ... FROM PUBLIC` ALONE IS NOT ENOUGH ON SUPABASE.
+-- Supabase grants EXECUTE on public-schema functions directly to the `anon`
+-- and `authenticated` roles via ALTER DEFAULT PRIVILEGES. Revoking only from
+-- PUBLIC drops the inherited grant and leaves the direct ones in place, so
+-- these functions stayed callable by any anonymous visitor.
+--
+-- For set_user_role that was a live privilege escalation: it is SECURITY
+-- DEFINER with no authorization check, so an anonymous caller could mint
+-- themselves an admin account on a site handling payments and API keys.
+-- Revoke from the roles explicitly; service_role still works.
 REVOKE EXECUTE ON FUNCTION public.is_admin(UUID) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.is_admin(UUID) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.is_admin(UUID) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.is_admin(UUID) TO service_role;
 
 -- 5. RPC: log an audit event (append-only)
@@ -123,5 +135,11 @@ BEGIN
 END;
 $$;
 
+-- See the note on is_admin above: the anon/authenticated revokes are
+-- load-bearing, not decorative. Without them this SECURITY DEFINER function
+-- — which never checks that the caller is an admin — is a public
+-- privilege-escalation endpoint.
 REVOKE EXECUTE ON FUNCTION public.set_user_role(UUID, TEXT, UUID) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.set_user_role(UUID, TEXT, UUID) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.set_user_role(UUID, TEXT, UUID) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.set_user_role(UUID, TEXT, UUID) TO service_role;
