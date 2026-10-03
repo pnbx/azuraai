@@ -10,18 +10,19 @@
  */
 
 import { useCallback, useRef, useState } from 'react'
+import type { ChatMsg, StreamTimings } from './conversations'
 
-export interface ChatMsg {
-  role: 'user' | 'assistant'
-  content: string
-  reasoning?: string
-  sources?: Array<{ title: string; url: string; snippet: string }>
-  stages?: string[]
-  failed?: boolean
-  demo?: boolean
-  /** Image attachments (data URLs) sent alongside this user message. */
-  images?: string[]
-}
+/**
+ * Re-exported so callers can keep importing the message shape from whichever
+ * module they already use.
+ *
+ * This file previously declared its *own* `ChatMsg` while conversations.ts
+ * declared a second, subtly different one — the stream could add a field that
+ * the renderer and the persistence layer had never heard of, and the only
+ * symptom would be a type error in whichever file happened to be checked
+ * first. One shape, defined once.
+ */
+export type { ChatMsg, StreamTimings }
 
 export type ChatMode = 'fast' | 'thinking' | 'research'
 export type StreamState = 'idle' | 'connecting' | 'streaming' | 'error'
@@ -37,7 +38,12 @@ export interface StreamHandlers {
   onStage: (stage: string, demo?: boolean) => void
   onSources: (sources: NonNullable<ChatMsg['sources']>, demo?: boolean) => void
   onMeta: (
-    final: { content: string; reasoning?: string; sources?: ChatMsg['sources'] },
+    final: {
+      content: string
+      reasoning?: string
+      sources?: ChatMsg['sources']
+      timings?: StreamTimings
+    },
     demo?: boolean
   ) => void
 }
@@ -47,6 +53,13 @@ export function useAppChatStream() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [capInfo, setCapInfo] = useState<{ used: number; cap: number } | null>(null)
   const [demoMode, setDemoMode] = useState(false)
+  /**
+   * Client-side clock for the live "0:07" counter. Starts when the request
+   * goes out and is cleared when it ends; the frozen badge afterwards uses
+   * the server's `timings` instead, because this clock is only trustworthy
+   * while the screen is actually on.
+   */
+  const [startedAt, setStartedAt] = useState<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   const cancel = useCallback(() => {
@@ -70,6 +83,7 @@ export function useAppChatStream() {
       const controller = new AbortController()
       abortRef.current = controller
       setState('connecting')
+      setStartedAt(Date.now())
       setErrorMsg(null)
 
       const question =
@@ -195,14 +209,15 @@ export function useAppChatStream() {
               case 'meta':
                 sawRealContent = true
                 handlers.onMeta(
-                  {
-                    content: String(evt.content ?? ''),
-                    reasoning:
-                      evt.reasoning !== undefined ? String(evt.reasoning ?? '') : undefined,
-                    sources: evt.sources as ChatMsg['sources'] | undefined,
-                  },
-                  isDemo
-                )
+                    {
+                      content: String(evt.content ?? ''),
+                      reasoning:
+                        evt.reasoning !== undefined ? String(evt.reasoning ?? '') : undefined,
+                      sources: evt.sources as ChatMsg['sources'] | undefined,
+                      timings: parseTimings(evt.timings),
+                    },
+                    isDemo
+                  )
                 break
               case 'error':
                 if (evt.code === 'pool_exhausted') {
@@ -238,12 +253,50 @@ export function useAppChatStream() {
         }
       } finally {
         abortRef.current = null
+        setStartedAt(null)
       }
     },
     []
   )
 
-  return { send, cancel, dismissError, state, errorMsg, capInfo, demoMode }
+  return { send, cancel, dismissError, state, errorMsg, capInfo, demoMode, startedAt }
+}
+
+/**
+ * Validate the server's timing block before it reaches the UI.
+ *
+ * The frame is parsed out of a network stream, so every field is untrusted: a
+ * missing, malformed or negative number has to degrade to "no timing" rather
+ * than render "NaN ثانیه" in the middle of a finished answer.
+ */
+function parseTimings(raw: unknown): StreamTimings | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined
+  const t = raw as Record<string, unknown>
+
+  const isMs = (v: unknown): v is number =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0
+
+  if (!isMs(t.totalMs)) return undefined
+  const totalMs = t.totalMs
+  const firstTokenMs = isMs(t.firstTokenMs) ? t.firstTokenMs : null
+  const attempts =
+    isMs(t.attempts) && t.attempts >= 1 ? Math.floor(t.attempts) : undefined
+
+  let stages: Record<string, number> | undefined
+  if (typeof t.stages === 'object' && t.stages !== null && !Array.isArray(t.stages)) {
+    const kept: Record<string, number> = {}
+    for (const [stage, at] of Object.entries(t.stages as Record<string, unknown>)) {
+      if (isMs(at)) kept[stage] = at
+    }
+    if (Object.keys(kept).length > 0) stages = kept
+  }
+
+  return {
+    totalMs,
+    firstTokenMs,
+    ...(attempts !== undefined ? { attempts } : {}),
+    ...(stages !== undefined ? { stages } : {}),
+  }
 }
 
 /** Shared demo-stream runner (used by both fallback paths). */
@@ -303,6 +356,7 @@ async function runDemo(
               reasoning:
                 evt.reasoning !== undefined ? String(evt.reasoning ?? '') : undefined,
               sources: evt.sources as ChatMsg['sources'] | undefined,
+              timings: parseTimings(evt.timings),
             },
             true
           )

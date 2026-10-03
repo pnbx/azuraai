@@ -41,15 +41,28 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false
+      // The demo stream drives the same timer UI as the real routes, so it has
+      // to report timings in the same shape or the badge silently disappears
+      // exactly when the user is in fallback mode.
+      const startedAt = Date.now()
+      let firstTokenMs: number | null = null
+      const stageMarks: Record<string, number> = {}
       const send = (frame: string) => {
         if (!closed) controller.enqueue(encoder.encode(frame))
+      }
+      const markStage = (stage: string) => {
+        if (!(stage in stageMarks)) stageMarks[stage] = Date.now() - startedAt
+        send(sseFrame({ type: 'stage', stage }))
+      }
+      const markFirstToken = () => {
+        if (firstTokenMs === null) firstTokenMs = Date.now() - startedAt
       }
 
       try {
         if (mode === 'research') {
           for (const stage of ['plan', 'search', 'read']) {
             await sleep(700)
-            send(sseFrame({ type: 'stage', stage }))
+            markStage(stage)
           }
           await sleep(400)
           send(
@@ -63,7 +76,7 @@ export async function POST(req: NextRequest) {
             })
           )
           await sleep(300)
-          send(sseFrame({ type: 'stage', stage: 'synthesize' }))
+          markStage('synthesize')
           const chunks = [
             'Short answer: ',
             'the pool gives ~',
@@ -77,12 +90,19 @@ export async function POST(req: NextRequest) {
           ]
           for (const c of chunks) {
             await sleep(90)
+            markFirstToken()
             send(sseFrame({ type: 'content', delta: c }))
           }
           send(
             sseFrame({
               type: 'meta',
               content: chunks.join(''),
+              timings: {
+                totalMs: Date.now() - startedAt,
+                firstTokenMs,
+                attempts: 1,
+                stages: stageMarks,
+              },
               sources: [
                 { title: 'OpenRouter — free models list', url: 'https://openrouter.ai/models?q=free', snippet: '' },
                 { title: 'AzuraAI — product page', url: 'https://www.azuraai.ir', snippet: '' },
@@ -94,14 +114,26 @@ export async function POST(req: NextRequest) {
           const reasoningWords = DEMO_REASONING.split(' ')
           for (let i = 0; i < reasoningWords.length; i++) {
             await sleep(55)
+            markFirstToken()
             send(sseFrame({ type: 'reasoning', delta: (i === 0 ? '' : ' ') + reasoningWords[i] }))
           }
           const chunks = DEMO_ANSWER.split(/(\s+)/)
           for (const c of chunks) {
             await sleep(28)
+            markFirstToken()
             send(sseFrame({ type: 'content', delta: c }))
           }
-          send(sseFrame({ type: 'meta', content: DEMO_ANSWER }))
+          send(
+            sseFrame({
+              type: 'meta',
+              content: DEMO_ANSWER,
+              timings: {
+                totalMs: Date.now() - startedAt,
+                firstTokenMs,
+                attempts: 1,
+              },
+            })
+          )
         }
       } finally {
         closed = true

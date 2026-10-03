@@ -39,6 +39,7 @@ import { useConversations } from './use-conversations'
 import { AppChatMessage, AzuraAvatar } from './chat-message'
 import { AzuraLogoAnimated } from '@/components/brand/logo'
 import { ThinkingPanel, StageRail } from './thinking-panel'
+import { ElapsedTicker, StageTimings } from './response-timer'
 import { ConversationsDrawer } from './drawer'
 import { useVoiceInput } from './voice-input'
 import { useMemory } from './use-memory'
@@ -146,7 +147,8 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
   )
 
   // ── Stream ─────────────────────────────────────────────────────────────────
-  const { send, cancel, dismissError, state, errorMsg, demoMode: rawDemoMode } = useAppChatStream()
+  const { send, cancel, dismissError, state, errorMsg, demoMode: rawDemoMode, startedAt } =
+    useAppChatStream()
   // ── Memory ─────────────────────────────────────────────────────────────────
   // Opt-in via settings toggle: when enabled, every send lets the server
   // read durable facts into the prompt and quietly learn new ones.
@@ -346,6 +348,9 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                 content: final.content || last.content,
                 reasoning: final.reasoning ?? last.reasoning,
                 sources: final.sources ?? last.sources,
+                // Server-measured reply timings. Kept even on a demo retry so
+                // the badge stays populated rather than vanishing mid-message.
+                ...(final.timings ? { timings: final.timings } : {}),
                 demo: demo || last.demo,
               }
             }
@@ -729,19 +734,30 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
                           : undefined
                       }
                     />
+                    {/* Research only, and only once finished: the live rail
+                        above already covers "still working". */}
+                    {m.role === 'assistant' && !busy && mode === 'research' ? (
+                      <div className="mt-2 flex justify-end">
+                        <StageTimings timings={m.timings} />
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </AnimatePresence>
 
               {liveAssistant && mode === 'research' ? (
-                <div className="mb-5 flex justify-center">
+                <div className="mb-5 flex items-center justify-center gap-3">
                   <StageRail stages={liveStages} />
+                  <ElapsedTicker startedAt={startedAt} />
                 </div>
               ) : null}
 
               {liveAssistant && mode === 'thinking' && liveReasoning ? (
-                <div className="mb-5">
+                <div className="mb-5 space-y-2">
                   <ThinkingPanel reasoning={liveReasoning} active={state === 'streaming'} />
+                  <div className="flex justify-center">
+                    <ElapsedTicker startedAt={startedAt} />
+                  </div>
                 </div>
               ) : null}
 

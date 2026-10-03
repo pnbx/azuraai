@@ -14,6 +14,24 @@
 
 export type ChatMode = 'fast' | 'thinking' | 'research'
 
+/**
+ * Timing block the server sends on the SSE `meta` frame.
+ *
+ * Measured server-side on purpose: a phone that sleeps its tab, drops LTE or
+ * fails to paint would all corrupt a browser-side clock, and a slow report is
+ * exactly when the number matters most.
+ */
+export interface StreamTimings {
+  /** Wall-clock ms from the moment the response body began. */
+  totalMs: number
+  /** Ms until the first content/reasoning delta. Null if none ever arrived. */
+  firstTokenMs: number | null
+  /** Upstream calls this reply cost — more than one means a key died. */
+  attempts?: number
+  /** Research only: stage → ms offset at which that stage began. */
+  stages?: Record<string, number>
+}
+
 export interface ChatMsg {
   role: 'user' | 'assistant'
   content: string
@@ -29,6 +47,8 @@ export interface ChatMsg {
    * as multimodal parts.
    */
   images?: string[]
+  /** Server-measured reply timing, set once the `meta` frame lands. */
+  timings?: StreamTimings
 }
 
 export interface Conversation {

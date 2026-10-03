@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { AppChatScreen } from '@/components/app/chat-screen'
 import { I18nProvider } from '@/components/app/i18n-provider'
+import { ElapsedClockProvider } from '@/components/app/response-timer'
 import { getServerUser } from '@/lib/auth/server'
 
 export const metadata: Metadata = {
@@ -29,7 +30,11 @@ export default async function AppChatPage() {
       {/* The locale itself is resolved by the pre-paint script in the root
           layout head; this only supplies the store. */}
       <I18nProvider>
-        <AppChatScreen authed={authed} />
+        {/* One shared clock for every response timer on the screen, so a
+            conversation full of finished badges runs no intervals at all. */}
+        <ElapsedClockProvider>
+          <AppChatScreen authed={authed} />
+        </ElapsedClockProvider>
       </I18nProvider>
     </div>
   )

@@ -28,6 +28,7 @@ import type { ChatMsg } from './conversations'
 import { Markdown } from './markdown'
 import { ReasoningText } from './thinking-panel'
 import { SourceRail } from './sources-sheet'
+import { ResponseBadge } from './response-timer'
 import { MessageImages } from './attachments'
 import { AzuraMark, AzuraLogoAnimated } from '@/components/brand/logo'
 import { copyText, downloadTextFile, exportFilename } from './text-utils'
@@ -362,6 +363,12 @@ export function AppChatMessage({
               <span className="text-[10px] tabular-nums text-muted-foreground" title={message.ts ? new Date(message.ts).toLocaleString() : undefined}>
                 {msgTime(message.ts, locale)}
               </span>
+            ) : null}
+            {/* Frozen server-measured reply timing. Absent on messages
+                restored from an older conversation, and on failed replies,
+                which is correct — there was no reply to time. */}
+            {message.role === 'assistant' && message.timings ? (
+              <ResponseBadge timings={message.timings} />
             ) : null}
             <AssistantActions
               content={message.content}

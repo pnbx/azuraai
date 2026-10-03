@@ -284,8 +284,19 @@ const remember = body.remember === true && user !== null
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false
+      // Started inside `start`, i.e. after the response head is written, so
+      // it measures the work the user actually waits on and not body parsing,
+      // the daily-cap RPC or auth.
+      const startedAt = Date.now()
+      let firstTokenMs: number | null = null
+      /** How many upstream calls this request cost — one per model attempt. */
+      let attempts = 0
       const send = (frame: string) => {
         if (!closed) controller.enqueue(encoder.encode(frame))
+      }
+      /** Latch the first byte of real answer text, exactly once. */
+      const markFirstToken = () => {
+        if (firstTokenMs === null) firstTokenMs = Date.now() - startedAt
       }
 
       try {
@@ -306,13 +317,22 @@ const remember = body.remember === true && user !== null
               ...(systemNote ? { systemNote } : {}),
             },
             {
-              onContent: (delta) => send(sseFrame({ type: 'content', delta })),
-              onReasoning: (delta) => send(sseFrame({ type: 'reasoning', delta })),
+              onContent: (delta) => {
+                if (delta) markFirstToken()
+                send(sseFrame({ type: 'content', delta }))
+              },
+              onReasoning: (delta) => {
+                if (delta) markFirstToken()
+                send(sseFrame({ type: 'reasoning', delta }))
+              },
             }
           )
 
         let outcome = await withPoolFailover(
-          (key) => runModel(key, messages, model),
+          (key) => {
+            attempts++
+            return runModel(key, messages, model)
+          },
           (err) => {
             const retryable = defaultIsRetryable(err)
             if (retryable) {
@@ -393,7 +413,10 @@ const remember = body.remember === true && user !== null
             if (!modelDead(outcome.error)) break
             send(sseFrame({ type: 'status', message: 'switching_model' }))
             outcome = await withPoolFailover(
-              (key) => runModel(key, messages, candidate),
+              (key) => {
+                attempts++
+                return runModel(key, messages, candidate)
+              },
               (err) => defaultIsRetryable(err),
               MAX_POOL_ATTEMPTS
             )
@@ -425,7 +448,10 @@ const remember = body.remember === true && user !== null
             )
             send(sseFrame({ type: 'status', message: 'refining' }))
             const retry = await withPoolFailover(
-              (key) => runModel(key, messages, model),
+              (key) => {
+                attempts++
+                return runModel(key, messages, model)
+              },
               (err) => defaultIsRetryable(err),
               MAX_POOL_ATTEMPTS
             )
@@ -447,6 +473,15 @@ const remember = body.remember === true && user !== null
               content,
               reasoning: outcome.result.reasoning,
               vision: visionRequested && outcome.result.vision === true,
+              // Server-measured so the number survives a sleeping tab, a
+              // dropped LTE frame, or a phone that failed to paint. `attempts`
+              // is what turns "16 seconds" into "16 seconds, two of them
+              // wasted on a dead key" when a user reports slowness.
+              timings: {
+                totalMs: Date.now() - startedAt,
+                firstTokenMs,
+                attempts,
+              },
             })
           )
           // ─── Memory extraction (fire-and-forget, never blocks) ─────────

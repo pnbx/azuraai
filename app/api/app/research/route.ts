@@ -13,8 +13,14 @@
  *   { type: "sources", sources }             — found web sources
  *   { type: "reasoning", delta }             — chain-of-thought tokens
  *   { type: "content", delta }               — answer tokens
- *   { type: "meta", content, sources }       — final frame
+ *   { type: "meta", content, sources, timings } — final frame
  *   { type: "error", code, message }         — terminal error frame
+ *
+ * Timing is measured here, on the server, rather than in the browser: a
+ * phone that sleeps its tab, loses LTE, or fails to paint a frame would all
+ * corrupt a client-side clock, and the user's question "why was that slow?"
+ * needs the number to be honest. `timings` carries the total, the
+ * time-to-first-token, and where each research stage began.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -133,14 +139,28 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let closed = false
+      // Started inside `start`, i.e. after the response head is written, so
+      // it measures the work the user actually waits on and not body parsing,
+      // the daily-cap RPC or auth.
+      const startedAt = Date.now()
+      let firstTokenMs: number | null = null
+      /** Upstream calls this request cost — one per pool attempt. */
+      let attempts = 0
+      /** stage → ms offset at which that stage began, in arrival order. */
+      const stageMarks: Record<string, number> = {}
       const send = (frame: string) => {
         if (!closed) controller.enqueue(encoder.encode(frame))
+      }
+      /** Latch the first byte of real answer text, exactly once. */
+      const markFirstToken = () => {
+        if (firstTokenMs === null) firstTokenMs = Date.now() - startedAt
       }
 
       try {
         const outcome = await withPoolFailover(
-          async (key) =>
-            runResearch(
+          async (key) => {
+            attempts++
+            return runResearch(
               {
                 apiKey: key.apiKey,
                 tavilyApiKey: process.env.TAVILY_API_KEY || undefined,
@@ -154,12 +174,28 @@ export async function POST(req: NextRequest) {
                 signal: req.signal,
               },
               {
-                onStage: (stage) => send(sseFrame({ type: 'stage', stage })),
+                // Time-to-first-token counts real answer text only. Stage and
+                // sources frames are progress chrome: the synthesiser can
+                // legitimately think for 30s before a word appears, and
+                // measuring that as TTFB would flatter the model.
+                onStage: (stage) => {
+                  // A pool failover replays "plan"; keep the first mark so the
+                  // stage timeline stays monotonic and readable.
+                  if (!(stage in stageMarks)) stageMarks[stage] = Date.now() - startedAt
+                  send(sseFrame({ type: 'stage', stage }))
+                },
                 onSources: (sources) => send(sseFrame({ type: 'sources', sources })),
-                onContent: (delta) => send(sseFrame({ type: 'content', delta })),
-                onReasoning: (delta) => send(sseFrame({ type: 'reasoning', delta })),
+                onContent: (delta) => {
+                  if (delta) markFirstToken()
+                  send(sseFrame({ type: 'content', delta }))
+                },
+                onReasoning: (delta) => {
+                  if (delta) markFirstToken()
+                  send(sseFrame({ type: 'reasoning', delta }))
+                },
               }
-            ),
+            )
+          },
           (err) => {
             const retryable = defaultIsRetryable(err)
             if (retryable) {
@@ -179,6 +215,12 @@ export async function POST(req: NextRequest) {
               content: normalizePersianMarkdown(outcome.result.content),
               reasoning: outcome.result.reasoning,
               sources: outcome.result.sources,
+              timings: {
+                totalMs: Date.now() - startedAt,
+                firstTokenMs,
+                attempts,
+                stages: stageMarks,
+              },
             })
           )
           // ─── Memory extraction (fire-and-forget, never blocks) ─────────

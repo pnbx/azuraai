@@ -316,6 +316,16 @@ export const STRINGS = {
   'stage.search': { fa: 'جست‌وجو در وب', en: 'Searching the web' },
   'stage.read': { fa: 'خواندن منابع', en: 'Reading sources' },
   'stage.synthesize': { fa: 'جمع‌بندی پاسخ', en: 'Synthesizing' },
+  // ── Response timer ──────────────────────────────────────────────────────
+  'timer.elapsed': { fa: 'زمان پاسخ', en: 'Response time' },
+  'timer.elapsedAria': { fa: 'زمان سپری‌شده: {n}', en: 'Elapsed: {n}' },
+  'timer.firstToken': { fa: 'شروع پاسخ', en: 'First token' },
+  'timer.stages': { fa: 'زمان هر مرحله', en: 'Stage timings' },
+  'timer.attempts': { fa: '{n} تلاش', en: '{n} attempts' },
+  'timer.band.fast': { fa: 'سریع', en: 'Fast' },
+  'timer.band.normal': { fa: 'معمولی', en: 'Normal' },
+  'timer.band.slow': { fa: 'کند', en: 'Slow' },
+  'timer.band.stalled': { fa: 'خیلی کند', en: 'Very slow' },
   'tools.open': { fa: 'ابزارها', en: 'Tools' },
   'tools.title': { fa: 'ابزارها', en: 'Tools' },
   'tools.subtitle': {
