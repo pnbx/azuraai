@@ -294,6 +294,15 @@ export const STRINGS = {
   'msg.bad': { fa: 'پاسخ بد بود', en: 'Bad response' },
   'msg.copyMessage': { fa: 'کپی پیام', en: 'Copy message' },
   'msg.edit': { fa: 'ویرایش پیام', en: 'Edit message' },
+  'msg.cancel': { fa: 'انصراف', en: 'Cancel' },
+  'msg.sendEdit': { fa: 'ارسال', en: 'Send' },
+  'msg.failed': {
+    fa: 'مشکلی پیش آمد — دوباره تلاش کن.',
+    en: 'Something went wrong — try again.',
+  },
+  'sources.title': { fa: 'منابع', en: 'Sources' },
+  'sources.count': { fa: '{n} منبع', en: '{n} sources' },
+  'sources.close': { fa: 'بستن منابع', en: 'Close sources' },
   'msg.reasoning': { fa: 'کمی فکر کرد · {n} حرف', en: 'Thought for a moment · {n} chars' },
   'thinking.liveChars': {
     fa: '{n} حرف استدلال · در حال نوشتن…',

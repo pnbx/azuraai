@@ -17,7 +17,6 @@ import {
   RefreshCcw,
   ThumbsUp,
   ThumbsDown,
-  Globe,
   Pencil,
   Brain,
   ChevronDown,
@@ -28,7 +27,7 @@ import {
 import type { ChatMsg } from './conversations'
 import { Markdown } from './markdown'
 import { ReasoningText } from './thinking-panel'
-import { openExternal } from './external-link'
+import { SourceRail } from './sources-sheet'
 import { MessageImages } from './attachments'
 import { AzuraMark, AzuraLogoAnimated } from '@/components/brand/logo'
 import { copyText, downloadTextFile, exportFilename } from './text-utils'
@@ -162,34 +161,6 @@ function AssistantActions({
   )
 }
 
-// ─── Source cards ────────────────────────────────────────────────────────────
-
-function SourceCards({ sources }: { sources: NonNullable<ChatMsg['sources']> }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {sources.map((s, i) => (
-        <motion.a
-          key={s.url}
-          href={s.url}
-          onClick={(e) => {
-            e.preventDefault()
-            void openExternal(s.url)
-          }}
-          initial={{ opacity: 0, y: 8, scale: 0.96 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ delay: 0.05 * i, type: 'spring', stiffness: 300, damping: 24 }}
-          whileTap={{ scale: 0.97 }}
-          className="flex max-w-[240px] items-center gap-2 rounded-xl border border-border bg-card/80 px-3 py-2 backdrop-blur transition-colors hover:border-border-strong"
-        >
-          <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate text-xs font-medium">{s.title}</span>
-          <sup className="text-[0.65em] font-semibold text-brand-strong">{i + 1}</sup>
-        </motion.a>
-      ))}
-    </div>
-  )
-}
-
 // ─── Reasoning block (collapsed inside finished messages) ────────────────────
 
 function ReasoningBlock({ reasoning, live }: { reasoning: string; live?: boolean }) {
@@ -247,7 +218,7 @@ export function AppChatMessage({
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState(message.content)
   const [copied, setCopied] = React.useState(false)
-  const { t, tf, locale } = useI18n()
+  const { t, locale } = useI18n()
 
   const share = async () => {
     const md = message.content
@@ -291,7 +262,7 @@ export function AppChatMessage({
                 }}
                 className="rounded-lg px-3 py-1.5 text-muted-foreground hover:bg-muted"
               >
-                Cancel
+                {t('msg.cancel')}
               </button>
               <button
                 onClick={() => {
@@ -300,7 +271,7 @@ export function AppChatMessage({
                 }}
                 className="rounded-lg bg-primary px-3 py-1.5 text-primary-foreground"
               >
-                Send
+                {t('msg.sendEdit')}
               </button>
             </div>
           </div>
@@ -375,12 +346,12 @@ export function AppChatMessage({
           ) : isStreaming ? (
             <ThinkingDots />
           ) : message.failed ? (
-            <p className="text-sm">Something went wrong — try again.</p>
+            <p className="text-sm">{t('msg.failed')}</p>
           ) : null}
 
           {message.sources && message.sources.length > 0 ? (
             <div className="mt-3 border-t border-border pt-3">
-              <SourceCards sources={message.sources} />
+              <SourceRail sources={message.sources} />
             </div>
           ) : null}
         </div>
@@ -408,10 +379,11 @@ export function AppChatMessage({
 }
 
 function ThinkingDots() {
+  const { t } = useI18n()
   return (
     <div className="flex items-center gap-2 py-3">
       <AzuraLogoAnimated size={18} />
-      <span className="text-sm text-muted-foreground">Thinking…</span>
+      <span className="text-sm text-muted-foreground">{t('chat.thinking')}</span>
     </div>
   )
 }
