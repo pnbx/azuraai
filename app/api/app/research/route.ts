@@ -29,8 +29,22 @@ import { normalizePersianMarkdown } from '@/lib/persian-text'
 export const runtime = 'nodejs'
 export const maxDuration = 120
 
+/**
+ * Research planner/synthesiser model.
+ *
+ * This used to fall back to `openrouter/free`, which picks a *random* free
+ * model per request. In production that meant the query planner occasionally
+ * ran on a model bad enough to invent its own search topic — a question about
+ * continents came back with eight Wikipedia pages about "safety", and the
+ * answer then refused because its own sources were irrelevant.
+ *
+ * Same precedence as the chat route, so both share one pinned, benchmarked
+ * model.
+ */
 const MODEL_RESEARCH =
-  process.env.OPENROUTER_MODEL_RESEARCH || 'openrouter/free'
+  process.env.OPENROUTER_MODEL_RESEARCH ||
+  process.env.OPENROUTER_MODEL_FAST ||
+  'poolside/laguna-s-2.1:free'
 const DAILY_CAP = Number(process.env.APP_CHAT_DAILY_CAP || 30)
 
 interface ResearchBody {

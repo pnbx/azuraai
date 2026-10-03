@@ -295,7 +295,16 @@ export async function runResearch(
   opts: ResearchOptions,
   events: ResearchEvents
 ): Promise<{ sources: ResearchSource[]; content: string; reasoning?: string }> {
-  const queries = await planQueries(opts, events)
+  const planned = await planQueries(opts, events)
+
+  // Always search the user's own words as well as the planner's.
+  //
+  // Wikipedia is a keyword search engine, not a natural-language one: the full
+  // question "قاره‌های جهان را نام ببر و مساحت هرکدام را بگو" matches nothing at
+  // all, while a short keyword query does. But if the planner drifts or returns
+  // nothing usable, the user's actual question is the one query guaranteed to
+  // be about the right subject, so it goes in last and is never dropped.
+  const queries = [...new Set([...planned, opts.userQuestion])].slice(0, 5)
   await pace(250, opts.signal)
 
   const sources = await searchAll(queries, opts, events)
