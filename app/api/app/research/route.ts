@@ -98,8 +98,17 @@ export async function POST(req: NextRequest) {
     )
     const capRow = Array.isArray(capData) ? capData[0] : capData
     if (capError) {
-      // Degrade gracefully when usage tracking is unavailable (see chat route).
-      console.error('[AppResearch] usage RPC failed (allowing request):', capError.message)
+      // Fails open, same as the chat route — see the note there. Named
+      // explicitly because an uncapped research run is the most expensive
+      // request this app makes: several web searches plus a long synthesis.
+      console.error(
+        '[AppResearch] usage RPC failed (allowing request, DAILY CAP NOT ENFORCED):',
+        capError.code,
+        capError.message,
+        capError.code === 'PGRST202'
+          ? '— apply supabase/migrations/20260929000000_app_free_gateway.sql'
+          : ''
+      )
     } else if (!capRow?.allowed) {
       return NextResponse.json(
         {

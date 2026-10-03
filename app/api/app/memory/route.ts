@@ -18,6 +18,32 @@ import { supabaseAdmin } from '@/supabase/admin'
 
 export const runtime = 'nodejs'
 
+/**
+ * Supabase/PostgREST error codes worth telling apart.
+ *
+ * PGRST205 / 42P01 mean the relation does not exist, i.e. the `user_memory`
+ * migration was never applied to the target project. That is a deploy
+ * misconfiguration, not a runtime blip, and it fails open forever and
+ * silently — every request 500s, the client keeps its stale local mirror, and
+ * nothing in the logs says why. Treating it separately here is what makes
+ * that visible instead of a mystery.
+ */
+function isMissingRelation(code?: string): boolean {
+  return code === 'PGRST205' || code === '42P01'
+}
+
+function logMemoryFailure(op: string, error: { code?: string; message: string }): void {
+  if (isMissingRelation(error.code)) {
+    console.error(
+      `[AppMemory] ${op} failed: relation "user_memory" does not exist. ` +
+        'Apply supabase/migrations/20261001000000_user_memory.sql to this project. ' +
+        'Long-term memory is unavailable until then.'
+    )
+    return
+  }
+  console.error(`[AppMemory] ${op} failed:`, error.code, error.message)
+}
+
 interface MemoryRow {
   id: number
   content: string
@@ -41,6 +67,7 @@ export async function GET() {
     .limit(200)
 
   if (error) {
+    logMemoryFailure('read', error)
     return NextResponse.json({ success: false, error: 'memory_read_failed' }, { status: 500 })
   }
 
@@ -73,6 +100,7 @@ export async function POST(req: NextRequest) {
     .eq('user_id', user.id)
 
   if (error) {
+    logMemoryFailure('count', error)
     return NextResponse.json({ success: false, error: 'memory_read_failed' }, { status: 500 })
   }
   if ((count ?? 0) >= 200) {
@@ -86,6 +114,7 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (insertError || !data) {
+    if (insertError) logMemoryFailure('insert', insertError)
     return NextResponse.json({ success: false, error: 'memory_write_failed' }, { status: 500 })
   }
 
@@ -109,6 +138,7 @@ export async function DELETE(req: NextRequest) {
       .delete()
       .eq('user_id', user.id)
     if (error) {
+      logMemoryFailure('delete_all', error)
       return NextResponse.json({ success: false, error: 'memory_delete_failed' }, { status: 500 })
     }
     return NextResponse.json({ success: true })
@@ -126,6 +156,7 @@ export async function DELETE(req: NextRequest) {
     .eq('id', idNum)
 
   if (error) {
+    logMemoryFailure('delete_one', error)
     return NextResponse.json({ success: false, error: 'memory_delete_failed' }, { status: 500 })
   }
 

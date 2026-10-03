@@ -263,7 +263,20 @@ const remember = body.remember === true && user !== null
     if (capError) {
       // Degrade gracefully: if usage tracking is unavailable (e.g. migration
       // not applied yet), allow the request and log loudly instead of 500-ing.
-      console.error('[AppChat] usage RPC failed (allowing request):', capError.message)
+      //
+      // Note this fails OPEN: an uncapped request goes to the upstream. That
+      // is the right trade for a blip, but if the RPC is *permanently*
+      // missing the app has been serving without a daily cap and nobody
+      // notices, because the client still gets its reply. Naming the
+      // migration in the log is what turns that back into an alert.
+      console.error(
+        '[AppChat] usage RPC failed (allowing request, DAILY CAP NOT ENFORCED):',
+        capError.code,
+        capError.message,
+        capError.code === 'PGRST202'
+          ? '— apply supabase/migrations/20260929000000_app_free_gateway.sql'
+          : ''
+      )
     } else if (!capRow?.allowed) {
       return NextResponse.json(
         {
