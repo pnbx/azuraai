@@ -12,6 +12,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Brain, ChevronDown, ListTodo, Search, BookOpen, Sparkles, Check } from 'lucide-react'
+import { useI18n } from './i18n-provider'
+import type { I18nKey } from '@/lib/i18n'
 
 const spring = { type: 'spring' as const, stiffness: 320, damping: 28 }
 
@@ -110,12 +112,11 @@ function ThinkingOrb({ active }: { active: boolean }) {
 export function ThinkingPanel({
   reasoning,
   active,
-  label = 'Deep thinking',
 }: {
   reasoning: string
   active: boolean
-  label?: string
 }) {
+  const { t, tf } = useI18n()
   const [expanded, setExpanded] = useState(true)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const charCount = reasoning.length
@@ -144,11 +145,14 @@ export function ThinkingPanel({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Brain className="h-3.5 w-3.5 text-violet-400" />
-            <span className="shimmer-text text-sm font-semibold">{label}</span>
+            <span className="shimmer-text text-sm font-semibold">
+              {t('chat.mode.thinking')}
+            </span>
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {charCount.toLocaleString()} reasoning chars
-            {active ? ' · streaming…' : ''}
+            {tf(active ? 'thinking.liveChars' : 'thinking.settledChars', {
+              n: charCount.toLocaleString(),
+            })}
           </p>
         </div>
         <motion.span animate={{ rotate: expanded ? 180 : 0 }} transition={spring}>
@@ -180,14 +184,19 @@ export function ThinkingPanel({
 
 // ─── Research stage rail ─────────────────────────────────────────────────────
 
+/**
+ * Icon-only rail, so each step carries its label as an accessible name — the
+ * icons mean nothing to a screen reader on their own.
+ */
 const STAGES = [
-  { key: 'plan', label: 'Planning search', icon: ListTodo },
-  { key: 'search', label: 'Searching the web', icon: Search },
-  { key: 'read', label: 'Reading sources', icon: BookOpen },
-  { key: 'synthesize', label: 'Synthesizing', icon: Sparkles },
-] as const
+  { key: 'plan', labelKey: 'stage.plan', icon: ListTodo },
+  { key: 'search', labelKey: 'stage.search', icon: Search },
+  { key: 'read', labelKey: 'stage.read', icon: BookOpen },
+  { key: 'synthesize', labelKey: 'stage.synthesize', icon: Sparkles },
+] as const satisfies ReadonlyArray<{ key: string; labelKey: I18nKey; icon: typeof ListTodo }>
 
 export function StageRail({ stages }: { stages: string[] }) {
+  const { t } = useI18n()
   const currentIndex = (() => {
     let idx = -1
     for (const s of STAGES) if (stages.includes(s.key)) idx = STAGES.indexOf(s)
@@ -203,6 +212,9 @@ export function StageRail({ stages }: { stages: string[] }) {
         return (
           <div key={stage.key} className="flex items-center gap-1">
             <motion.div
+              role="status"
+              aria-label={t(stage.labelKey)}
+              title={t(stage.labelKey)}
               initial={false}
               animate={{
                 scale: active ? 1.08 : 1,

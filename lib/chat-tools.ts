@@ -16,6 +16,7 @@
 // Type-only import: keeps this module free of runtime dependencies on the
 // dictionary while still tying the keys to it.
 import type { I18nKey } from './i18n'
+import { normalizePersianChars } from './persian-text'
 
 export type ToolId =
   | 'summarize'
@@ -338,7 +339,6 @@ export function looksLikeCalculation(input: string): boolean {
 // ─── Persian text utilities ──────────────────────────────────────────────────
 
 const PERSIAN_DIGITS = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹']
-const ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩']
 
 /** Convert ASCII and Arabic-Indic digits to Persian digits. */
 export function toPersianDigits(input: string): string {
@@ -372,19 +372,18 @@ export function formatNumber(n: number): string {
 }
 
 /**
- * Normalise Arabic yeh/kaf to Persian and tidy the ZWNJ.
+ * Normalise Arabic yeh/kaf to Persian and tidy the whitespace.
  *
  * Persian keyboards and OCR produce ی/ي and ک/ك interchangeably, and the
  * difference is visible in an otherwise clean message.
+ *
+ * The character-level work lives in `lib/persian-text` so the streaming routes
+ * and this composer-side helper can never drift apart; this wrapper only adds
+ * the whole-string whitespace tidy-up that makes sense for a textarea.
  */
 export function normalizePersian(input: string): string {
-  return input
-    .replace(/[يى]/g, 'ی')
-    .replace(/ك/g, 'ک')
-    // Strip tatweel/kashida, a purely decorative elongation.
-    .replace(/ـ/g, '')
-    // Collapse runs of Arabic punctuation spacing without touching the
-    // punctuation itself.
+  return normalizePersianChars(input)
+    // Collapse runs of spacing without touching the punctuation itself.
     .replace(/[ \t]{2,}/g, ' ')
     .trim()
 }

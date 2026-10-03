@@ -295,6 +295,18 @@ export const STRINGS = {
   'msg.copyMessage': { fa: 'کپی پیام', en: 'Copy message' },
   'msg.edit': { fa: 'ویرایش پیام', en: 'Edit message' },
   'msg.reasoning': { fa: 'کمی فکر کرد · {n} حرف', en: 'Thought for a moment · {n} chars' },
+  'thinking.liveChars': {
+    fa: '{n} حرف استدلال · در حال نوشتن…',
+    en: '{n} reasoning chars · streaming…',
+  },
+  'thinking.settledChars': {
+    fa: '{n} حرف استدلال',
+    en: '{n} reasoning chars',
+  },
+  'stage.plan': { fa: 'برنامه‌ریزی جست‌وجو', en: 'Planning search' },
+  'stage.search': { fa: 'جست‌وجو در وب', en: 'Searching the web' },
+  'stage.read': { fa: 'خواندن منابع', en: 'Reading sources' },
+  'stage.synthesize': { fa: 'جمع‌بندی پاسخ', en: 'Synthesizing' },
   'tools.open': { fa: 'ابزارها', en: 'Tools' },
   'tools.title': { fa: 'ابزارها', en: 'Tools' },
   'tools.subtitle': {

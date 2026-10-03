@@ -30,6 +30,7 @@ import { getServerUser } from '@/lib/auth/server'
 import { supabaseAdmin } from '@/supabase/admin'
 import { withPoolFailover, defaultIsRetryable, type PooledKey } from '@/lib/gateway/keyPool'
 import { assessReply } from '@/lib/gateway/replyQuality'
+import { normalizePersianMarkdown } from '@/lib/persian-text'
 import {
   streamChatCompletion,
   OpenRouterError,
@@ -433,11 +434,17 @@ const remember = body.remember === true && user !== null
         }
 
         if ('result' in outcome) {
+          // Typography is fixed *here*, on the authoritative frame, rather than
+          // during streaming: a half-space or a yeh would otherwise pop in
+          // mid-sentence as tokens arrive, and the client would have to re-render
+          // the whole message. Code blocks, maths and URLs are preserved
+          // verbatim by the normaliser, so this is safe to run unconditionally.
+          const content = normalizePersianMarkdown(outcome.result.content)
           send(
             sseFrame({
               type: 'meta',
               model: outcome.result.model,
-              content: outcome.result.content,
+              content,
               reasoning: outcome.result.reasoning,
               vision: visionRequested && outcome.result.vision === true,
             })

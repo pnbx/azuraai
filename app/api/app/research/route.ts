@@ -24,6 +24,7 @@ import { withPoolFailover, defaultIsRetryable } from '@/lib/gateway/keyPool'
 import { OpenRouterError } from '@/lib/gateway/openrouterClient'
 import { runResearch } from '@/lib/gateway/researchAgent'
 import { renderMemoryBlock, type UserMemory } from '@/lib/gateway/memory'
+import { normalizePersianMarkdown } from '@/lib/persian-text'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -159,7 +160,9 @@ export async function POST(req: NextRequest) {
           send(
             sseFrame({
               type: 'meta',
-              content: outcome.result.content,
+              // Same typography pass as /api/app/chat, and for the same reason:
+              // applied on the authoritative final frame, never mid-stream.
+              content: normalizePersianMarkdown(outcome.result.content),
               reasoning: outcome.result.reasoning,
               sources: outcome.result.sources,
             })
