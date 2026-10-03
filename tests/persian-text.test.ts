@@ -6,6 +6,7 @@ import {
   applyTanween,
   isPersianText,
   toPersianDigitsIn,
+  toPersianNumberSeparators,
 } from '@/lib/persian-text'
 
 /** U+200C, spelled out so the intent is readable in a diff. */
@@ -48,6 +49,55 @@ describe('isPersianText', () => {
 describe('toPersianDigitsIn', () => {
   it('converts ASCII and Arabic-Indic digits', () => {
     expect(toPersianDigitsIn('سال 2024 و ٢٠٢٥')).toBe('سال ۲۰۲۴ و ۲۰۲۵')
+  })
+})
+
+describe('toPersianNumberSeparators', () => {
+  it('converts thousands separators', () => {
+    expect(toPersianNumberSeparators('44,500,000')).toBe('44٬500٬000')
+    expect(toPersianNumberSeparators('1,000')).toBe('1٬000')
+  })
+
+  it('converts a decimal point', () => {
+    expect(toPersianNumberSeparators('3.14')).toBe('3٫14')
+    expect(toPersianNumberSeparators('1,234.56')).toBe('1٬234٫56')
+  })
+
+  it('leaves an ambiguous dot before three digits alone', () => {
+    // "1.000" is one thousand in the European convention and one point zero in
+    // the English one. Guessing either way would silently change a number, so
+    // it is passed through untouched.
+    expect(toPersianNumberSeparators('1.000')).toBe('1.000')
+  })
+
+  it('never touches a comma between words', () => {
+    // The whole point of the digit guard on both sides.
+    expect(toPersianNumberSeparators('تهران، اصفهان')).toBe('تهران، اصفهان')
+    expect(toPersianNumberSeparators('در سال 2024، امروز')).toBe('در سال 2024، امروز')
+  })
+
+  it('never touches a sentence-ending period', () => {
+    expect(toPersianNumberSeparators('پایان.')).toBe('پایان.')
+  })
+})
+
+describe('normalizePersianMarkdown — numbers', () => {
+  it('produces a fully Persian number, not mixed digits and ASCII commas', () => {
+    // Regression: Persian digits with an ASCII comma looked broken in a table.
+    const out = normalizePersianMarkdown('مساحت آسیا 44,500,000 کیلومتر مربع است.')
+    expect(out).toBe('مساحت آسیا ۴۴٬۵۰۰٬۰۰۰ کیلومتر مربع است.')
+  })
+
+  it('handles a number inside a markdown table row', () => {
+    const input = '| آسیا | 44,500,000 |\n| آفریقا | 30,370,000 |'
+    const out = normalizePersianMarkdown(input)
+    expect(out).toContain('۴۴٬۵۰۰٬۰۰۰')
+    expect(out).toContain('۳۰٬۳۷۰٬۰۰۰')
+  })
+
+  it('leaves a number in a Persian sentence comma alone', () => {
+    const out = normalizePersianMarkdown('در سال 2024، بازار رشد کرد.')
+    expect(out).toBe('در سال ۲۰۲۴، بازار رشد کرد.')
   })
 })
 

@@ -244,6 +244,26 @@ export function toPersianDigitsIn(text: string): string {
   })
 }
 
+/**
+ * Convert the *separators inside a number* to their Persian forms.
+ *
+ * Persian digits with an ASCII comma look broken: "44,500,000" becomes
+ * "۴۴,۵۰۰,۰۰۰", mixing two scripts inside one number. Persian writes U+066C
+ * ARABIC THOUSANDS SEPARATOR and U+066B ARABIC DECIMAL SEPARATOR.
+ *
+ * Both replacements are anchored to digits on *both* sides, so an ordinary
+ * comma in a Persian sentence ("تهران، اصفهان") is never touched.
+ *
+ * A dot followed by exactly three digits is genuinely ambiguous — "1.000" is
+ * one thousand in the European convention and one point zero in the English
+ * one — so it is left exactly as the model wrote it rather than guessed at.
+ */
+export function toPersianNumberSeparators(text: string): string {
+  return text
+    .replace(/(?<=\d),(?=\d{3}(?!\d))/g, '٬')
+    .replace(/(?<=\d)\.(?!\d{3}(?!\d))/g, '٫')
+}
+
 // ─── Half-space (نیم‌فاصله) ──────────────────────────────────────────────────
 
 /**
@@ -327,7 +347,12 @@ function normalizeSpan(text: string): string {
   out = applyTanween(out)
   // Digits are Persian-ised only when this span reads as Persian, so an English
   // answer passes through untouched.
-  if (isPersianText(out)) out = toPersianDigitsIn(out)
+  if (isPersianText(out)) {
+    // Separators first: the guard above them requires ASCII digits, which the
+    // digit pass is about to destroy.
+    out = toPersianNumberSeparators(out)
+    out = toPersianDigitsIn(out)
+  }
   // Deliberately NOT collapsing runs of spaces or trimming trailing ones here:
   // two trailing spaces are a Markdown hard line break, and normalising them
   // would silently reflow the model's answer. `normalizePersian` in
