@@ -1,0 +1,15 @@
+# Local-only files. None of this is part of the web build, and uploading it
+# turns a deploy into a 40+ MB transfer that fails on a flaky connection.
+android/
+telegram-agent/
+scripts/
+docs/
+tests/
+*.md
+!README.md
+*.log
+*.png
+*.jpg
+*.apk
+.vercel
+.next
