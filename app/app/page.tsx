@@ -7,6 +7,12 @@ import { getServerUser } from '@/lib/auth/server'
 export const metadata: Metadata = {
   title: 'Chat',
   description: 'Free AI chat with deep thinking and research modes',
+  // /app is the one session-gated screen a crawler CAN actually reach — the
+  // middleware deliberately leaves it open so the accountless mobile app can
+  // chat without signing in. That makes an explicit opt-out necessary here;
+  // robots.txt alone is not enough, because some answer engines fetch a
+  // listed-but-disallowed URL anyway.
+  robots: { index: false, follow: false },
 }
 
 export const viewport: Viewport = {

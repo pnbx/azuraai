@@ -12,9 +12,16 @@ tests/
 
 # Screenshots and recordings captured locally, not shipped assets.
 *.log
-*.apk
 *.mp4
 *.webm
+
+# NOTE: a bare `*.apk` used to sit here and silently stripped
+# marketing-site/public/downloads/azura-app.apk — the artefact /download
+# serves. The live download 404-ed while the local build looked perfect.
+# The only other APK in the repo is under android/, which is already
+# excluded by its own directory rule, so nothing needs the glob. The
+# negation below is kept as a guard in case another shipped APK appears.
+!marketing-site/public/downloads/*.apk
 
 # Only ever excluded in the repo root, never inside public/.
 /README.local.md

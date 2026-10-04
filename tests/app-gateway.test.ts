@@ -201,13 +201,19 @@ describe('/api/app/chat guards', () => {
     }
   }
 
-  function makeRequest(body: unknown): Request {
+  function makeRequest(body: unknown, extraHeaders?: Record<string, string>): Request {
     return new Request('http://localhost/api/app/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-azura-client': 'app' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-azura-client': 'app',
+        ...extraHeaders,
+      },
       body: typeof body === 'string' ? body : JSON.stringify(body),
     }) as unknown as Request
   }
+
+  const GUEST_DEVICE_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301'
 
   it('serves guests without a session — the app has no sign-in', async () => {
     // Auth became optional: a guest is a first-class caller, so the request
@@ -243,6 +249,109 @@ describe('/api/app/chat guards', () => {
     expect(res.status).toBe(429)
     const body = (await res.json()) as { error: string }
     expect(body.error).toBe('daily_cap_reached')
+  })
+
+  // ─── Guest quota ─────────────────────────────────────────────────────────
+  //
+  // The per-account cap never protected the mobile app: it has no accounts, so
+  // every real user was a guest and the free tier was unmetered. These lock in
+  // that guests are now charged against a hashed device id, that the raw UUID
+  // never leaves the server, and that signed-in callers still use the account
+  // counter rather than the device one.
+
+  it('meters a guest against the guest RPC using a hashed device id', async () => {
+    mockGetUser.mockRejectedValue(new Error('Unauthenticated'))
+    mockRpc.mockResolvedValue({ data: [{ allowed: true, used: 1, cap: 10 }] })
+    const { POST } = await importRoute()
+
+    const res = await POST(
+      makeRequest(
+        { messages: [{ role: 'user', content: 'hi' }] },
+        { 'x-azura-device': GUEST_DEVICE_ID }
+      )
+    )
+    expect(res.status).toBe(200)
+
+    const call = mockRpc.mock.calls.find((c) => c[0] === 'increment_app_guest_chat_usage')
+    expect(call).toBeDefined()
+
+    const params = call?.[1] as { p_guest_id: string; p_daily_cap: number }
+    // The stored key is a sha256, not the device UUID.
+    expect(params.p_guest_id).not.toBe(GUEST_DEVICE_ID)
+    expect(params.p_guest_id).toMatch(/^[0-9a-f]{64}$/)
+    expect(params.p_daily_cap).toBe(10)
+  })
+
+  it('429s a guest who is over the guest cap', async () => {
+    mockGetUser.mockRejectedValue(new Error('Unauthenticated'))
+    mockRpc.mockResolvedValue({ data: [{ allowed: false, used: 10, cap: 10 }] })
+    const { POST } = await importRoute()
+
+    const res = await POST(
+      makeRequest(
+        { messages: [{ role: 'user', content: 'hi' }] },
+        { 'x-azura-device': GUEST_DEVICE_ID }
+      )
+    )
+    expect(res.status).toBe(429)
+    const body = (await res.json()) as { error: string; used: number; cap: number }
+    expect([body.error, body.used, body.cap]).toEqual(['daily_cap_reached', 10, 10])
+  })
+
+  it('charges a signed-in user to the account, never the device', async () => {
+    mockGetUser.mockResolvedValue({ id: 'u1' })
+    mockRpc.mockResolvedValue({ data: [{ allowed: true, used: 1, cap: 30 }] })
+    const { POST } = await importRoute()
+
+    const res = await POST(
+      makeRequest(
+        { messages: [{ role: 'user', content: 'hi' }] },
+        { 'x-azura-device': GUEST_DEVICE_ID }
+      )
+    )
+    expect(res.status).toBe(200)
+
+    const names = mockRpc.mock.calls.map((c) => c[0])
+    expect(names).toContain('increment_app_chat_usage')
+    expect(names).not.toContain('increment_app_guest_chat_usage')
+  })
+
+  it('refuses to count a forged device id and falls back to the fingerprint', async () => {
+    mockGetUser.mockRejectedValue(new Error('Unauthenticated'))
+    mockRpc.mockResolvedValue({ data: [{ allowed: true, used: 1, cap: 10 }] })
+    const { POST } = await importRoute()
+
+    // Not a canonical UUID. If this were accepted verbatim, a caller could send
+    // a fresh value per request and mint unlimited counters. A user-agent is
+    // supplied so the network-fingerprint fallback has something to hash —
+    // without it there is no identity at all and the route serves unmetered.
+    await POST(
+      makeRequest(
+        { messages: [{ role: 'user', content: 'hi' }] },
+        { 'x-azura-device': 'forged-counter-1', 'user-agent': 'jest-agent/1.0' }
+      )
+    )
+
+    const call = mockRpc.mock.calls.find((c) => c[0] === 'increment_app_guest_chat_usage')
+    expect(call).toBeDefined()
+    const params = call?.[1] as { p_guest_id: string }
+    expect(params.p_guest_id).not.toBe('forged-counter-1')
+    expect(params.p_guest_id).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('still serves the request when the usage RPC is unavailable (fail-open)', async () => {
+    mockGetUser.mockRejectedValue(new Error('Unauthenticated'))
+    mockRpc.mockResolvedValue({ error: { code: 'PGRST202', message: 'missing' } })
+    const { POST } = await importRoute()
+
+    const res = await POST(
+      makeRequest(
+        { messages: [{ role: 'user', content: 'hi' }] },
+        { 'x-azura-device': GUEST_DEVICE_ID }
+      )
+    )
+    // A missing migration must not lock every real user out of the app.
+    expect(res.status).toBe(200)
   })
 
   it('returns an SSE stream on the happy path', async () => {

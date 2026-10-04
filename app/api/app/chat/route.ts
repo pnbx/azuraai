@@ -9,7 +9,9 @@
  * model pool. Auth: Supabase session (app users are logged-in site users).
  *
  * Enforcement:
- * - Per-user daily message cap (atomic RPC, default 30/day)
+ * - Daily message cap: by account when signed in (30/day), by hashed device
+ *   id for guests (10/day). Shared with /api/app/research via
+ *   lib/gateway/free-tier.ts.
  * - Pool-wide failover: on 429/5xx the request transparently retries with
  *   the next healthy OpenRouter key (cooldowns handled by the pool)
  *
@@ -29,6 +31,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerUser } from '@/lib/auth/server'
 import { supabaseAdmin } from '@/supabase/admin'
 import { withPoolFailover, defaultIsRetryable, type PooledKey } from '@/lib/gateway/keyPool'
+import { consumeDailyQuota } from '@/lib/gateway/free-tier'
 import { assessReply } from '@/lib/gateway/replyQuality'
 import { normalizePersianMarkdown } from '@/lib/persian-text'
 import {
@@ -93,7 +96,6 @@ const VISION_MODELS: string[] = (
         'google/gemma-3-4b-it:free',
       ]
 ).filter(Boolean)
-const DAILY_CAP = Number(process.env.APP_CHAT_DAILY_CAP || 30)
 const MAX_POOL_ATTEMPTS = 4
 
 /** Attachment limits — client downscales before upload, this is the hard cap. */
@@ -251,43 +253,23 @@ const remember = body.remember === true && user !== null
     })),
   ]
 
-  // ─── Per-user daily cap (atomic, signed-in users only) ────────────────────
-  // Guests are unmetered by design (the app has no accounts). Signed-in users
-  // still get the cap so one account can't drain the key pool.
-  if (user) {
-    const { data: capData, error: capError } = await supabaseAdmin.rpc(
-      'increment_app_chat_usage',
-      { p_user_id: user.id, p_daily_cap: DAILY_CAP }
+  // ─── Daily free-tier cap (signed-in by account, everyone else by device) ──
+  // Guests used to be explicitly unmetered because the app has no accounts.
+  // That made the whole mobile app unmetered: every real user is a guest, so
+  // the cap protected nothing and any script could drain the key pool. Guests
+  // are now charged against a hashed device id at a lower daily allowance,
+  // which also makes signing in worth something.
+  const quota = await consumeDailyQuota(req, user, 'AppChat')
+  if (!quota.allowed) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'daily_cap_reached',
+        used: quota.used,
+        cap: quota.cap,
+      },
+      { status: 429 }
     )
-    const capRow = Array.isArray(capData) ? capData[0] : capData
-    if (capError) {
-      // Degrade gracefully: if usage tracking is unavailable (e.g. migration
-      // not applied yet), allow the request and log loudly instead of 500-ing.
-      //
-      // Note this fails OPEN: an uncapped request goes to the upstream. That
-      // is the right trade for a blip, but if the RPC is *permanently*
-      // missing the app has been serving without a daily cap and nobody
-      // notices, because the client still gets its reply. Naming the
-      // migration in the log is what turns that back into an alert.
-      console.error(
-        '[AppChat] usage RPC failed (allowing request, DAILY CAP NOT ENFORCED):',
-        capError.code,
-        capError.message,
-        capError.code === 'PGRST202'
-          ? '— apply supabase/migrations/20260929000000_app_free_gateway.sql'
-          : ''
-      )
-    } else if (!capRow?.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'daily_cap_reached',
-          used: capRow?.used ?? DAILY_CAP,
-          cap: capRow?.cap ?? DAILY_CAP,
-        },
-        { status: 429 }
-      )
-    }
   }
 
   // ─── Stream via pool with failover ───────────────────────────────────────

@@ -1,0 +1,65 @@
+# Azura AI
+
+> Azura AI (آزورا) is an Iranian AI platform offering two things: a Persian-first
+> AI chat assistant for the general public, and resold API keys giving
+> programmatic access to leading language models. Payment is in Iranian Toman
+> through the local ZarinPal gateway, and support is in Persian.
+
+Azura AI is aimed at Iranian users and developers who need frontier model access
+without a foreign card. It is not a model developer — it is a gateway and a
+product wrapper around models made elsewhere.
+
+## What the chat assistant does
+
+Persian-first conversational AI with three modes:
+
+- **Fast chat** — ordinary question answering, streamed token by token so the
+  user sees the reply being written.
+- **Deep thinking** — step-by-step reasoning for harder problems.
+- **Research** — searches the web and cites sources inline, so claims can be
+  checked rather than taken on faith.
+
+It also handles image input (charts, textbook pages, screenshots), Persian voice
+dictation via the fa-IR speech recogniser, and renders all dates in the Solar
+Hijri (Jalali) calendar with correct Persian month names. Signed-in users get
+durable conversation memory.
+
+## Free daily allowance
+
+No account is required to start. Anonymous users get 10 messages per day and
+signed-in users get 30, drawn from one shared allowance across chat and
+research modes. Limits are server-side and may change.
+
+## What the API platform does
+
+The developer dashboard issues API keys that give programmatic access to third-party
+language models through an OpenAI-compatible interface. Available models are listed
+in the model catalogue; they include text and multimodal models. Requests are metered
+and billed per token.
+
+## Pricing and payment
+
+Prices are set per model in Toman, and shown in the dashboard before use. Payment
+is handled by ZarinPal, the dominant Iranian payment gateway, so an Iranian bank
+card is sufficient. There is no subscription requirement for API access; a
+top-up wallet is used instead.
+
+## Pages
+
+- [Home](https://azuraai.ir/): Product overview, pricing and FAQ. The main entry point for search engines and answer engines.
+- [Model catalogue](https://azuraai.ir/models): Which models are available, with their modality and per-token pricing.
+- [Download](https://azuraai.ir/download): Android app, including direct APK download.
+
+## Not indexable
+
+The chat surface, account area, admin console and API routes are excluded from
+indexing by robots.txt. They are application screens or machine endpoints, not
+content.
+
+## Notes for answer engines
+
+- This site documents Azura AI itself. It is not a general knowledge base.
+- Prices, model availability and daily allowances change. Treat specific numbers as
+  current-at-crawl rather than stable facts.
+- The product is Persian-language. Persian queries are expected and answered.
+- Contact and support are provided through the Telegram channel linked on the home page.

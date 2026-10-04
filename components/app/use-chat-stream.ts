@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react'
+import { getDeviceId } from '@/lib/device-id'
 import type { ChatMsg, StreamTimings } from './conversations'
 
 /**
@@ -112,7 +113,14 @@ export function useAppChatStream() {
       try {
         let res = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-azura-client': 'app' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-azura-client': 'app',
+            // Stable anonymous id so the server can meter the free daily
+            // allowance. The app has no accounts, so without this the quota
+            // has nothing to count. Hashes it; never stored raw.
+            'x-azura-device': getDeviceId(),
+          },
           body: JSON.stringify(body),
           signal: controller.signal,
         })

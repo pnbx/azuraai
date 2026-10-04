@@ -27,6 +27,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerUser } from '@/lib/auth/server'
 import { supabaseAdmin } from '@/supabase/admin'
 import { withPoolFailover, defaultIsRetryable } from '@/lib/gateway/keyPool'
+import { consumeDailyQuota } from '@/lib/gateway/free-tier'
 import { OpenRouterError } from '@/lib/gateway/openrouterClient'
 import { runResearch } from '@/lib/gateway/researchAgent'
 import { renderMemoryBlock, type UserMemory } from '@/lib/gateway/memory'
@@ -51,7 +52,8 @@ const MODEL_RESEARCH =
   process.env.OPENROUTER_MODEL_RESEARCH ||
   process.env.OPENROUTER_MODEL_FAST ||
   'poolside/laguna-s-2.1:free'
-const DAILY_CAP = Number(process.env.APP_CHAT_DAILY_CAP || 30)
+// Daily caps live in lib/gateway/free-tier.ts so chat and research can never
+// disagree about who is over their allowance.
 
 interface ResearchBody {
   question?: string
@@ -90,36 +92,22 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // ─── Daily cap (shared with chat, signed-in users only) ──────────────────
-  if (user) {
-    const { data: capData, error: capError } = await supabaseAdmin.rpc(
-      'increment_app_chat_usage',
-      { p_user_id: user.id, p_daily_cap: DAILY_CAP }
+  // ─── Daily cap (shared with chat — account for signed-in, device for guests) ──
+  // Charged from the same helper as /api/app/chat so the two cannot drift.
+  // Research is the expensive path (several web searches plus a long
+  // synthesis), so leaving it unmetered for guests was the widest hole in the
+  // free tier.
+  const quota = await consumeDailyQuota(req, user, 'AppResearch')
+  if (!quota.allowed) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'daily_cap_reached',
+        used: quota.used,
+        cap: quota.cap,
+      },
+      { status: 429 }
     )
-    const capRow = Array.isArray(capData) ? capData[0] : capData
-    if (capError) {
-      // Fails open, same as the chat route — see the note there. Named
-      // explicitly because an uncapped research run is the most expensive
-      // request this app makes: several web searches plus a long synthesis.
-      console.error(
-        '[AppResearch] usage RPC failed (allowing request, DAILY CAP NOT ENFORCED):',
-        capError.code,
-        capError.message,
-        capError.code === 'PGRST202'
-          ? '— apply supabase/migrations/20260929000000_app_free_gateway.sql'
-          : ''
-      )
-    } else if (!capRow?.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'daily_cap_reached',
-          used: capRow?.used ?? DAILY_CAP,
-          cap: capRow?.cap ?? DAILY_CAP,
-        },
-        { status: 429 }
-      )
-    }
   }
 
   // ─── Memory: load durable facts for the system prompt ──────────────────

@@ -59,6 +59,10 @@ import { createSupabaseServerClient } from '@/lib/supabase/server'
 const PUBLIC_ROUTES = [
   '/api/auth/callback',
   '/api/public',
+  // Static, server-rendered product page. Skipped so a crawler is not made to
+  // wait on a Supabase auth round trip (bounded at 8s by the timeout below)
+  // before it can read a page that has no per-visitor content anyway.
+  '/about',
 ]
 
 // Routes that require authentication (checked via middleware + server auth helpers)

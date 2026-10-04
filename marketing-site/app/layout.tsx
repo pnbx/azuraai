@@ -13,6 +13,96 @@ export const metadata: Metadata = {
   title: "Azura AI — چت هوشمند و فروش کلید API مدل‌های هوش مصنوعی",
   description:
     "Azura AI: چت با مدل‌های هوش مصنوعی و خرید کلید API با پرداخت ریالی، به تومان و پشتیبانی فارسی.",
+  applicationName: "Azura AI",
+  // No `manifest` key on purpose: this host ships no web app manifest, and
+  // declaring one would 404 on every page load.
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large" },
+  },
+  keywords: [
+    "چت هوش مصنوعی",
+    "هوش مصنوعی",
+    "دستیار هوشمند",
+    "خرید کلید API",
+    "API هوش مصنوعی",
+    "ChatGPT ایران",
+    "AI chat",
+    "AI API key",
+    "OpenAI API",
+    "پرداخت ریالی",
+  ],
+  authors: [{ name: "Azura AI" }],
+  creator: "Azura AI",
+  alternates: {
+    canonical: "/",
+    languages: { "fa-IR": "/", en: "/" },
+  },
+  openGraph: {
+    type: "website",
+    locale: "fa_IR",
+    url: "/",
+    siteName: "Azura AI",
+    title: "Azura AI — چت هوشمند و فروش کلید API مدل‌های هوش مصنوعی",
+    description:
+      "چت با مدل‌های هوش مصنوعی و خرید کلید API با پرداخت ریالی، به تومان و پشتیبانی فارسی.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Azura AI — چت هوشمند و فروش کلید API مدل‌های هوش مصنوعی",
+    description:
+      "چت با مدل‌های هوش مصنوعی و خرید کلید API با پرداخت ریالی، به تومان و پشتیبانی فارسی.",
+  },
+};
+
+/**
+ * Structured data for the organization and its web presence.
+ *
+ * Static and author-controlled — no user input reaches this string. Sits in the
+ * root layout rather than on individual pages so a link shared from any screen
+ * resolves to a known publisher instead of an anonymous URL.
+ */
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://azuraai.ir/#organization",
+      name: "Azura AI",
+      alternateName: "آزورا",
+      url: "https://azuraai.ir",
+      logo: "https://azuraai.ir/logo-mark.png",
+      description:
+        "Iranian AI platform offering a Persian-first chat assistant and resold API keys for leading language models, billed in Toman via ZarinPal.",
+      inLanguage: "fa-IR",
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://azuraai.ir/#website",
+      url: "https://azuraai.ir",
+      name: "Azura AI",
+      inLanguage: "fa-IR",
+      publisher: { "@id": "https://azuraai.ir/#organization" },
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://azuraai.ir/#app",
+      name: "Azura AI",
+      applicationCategory: "UtilitiesApplication",
+      operatingSystem: "Android, Web",
+      url: "https://azuraai.ir",
+      inLanguage: "fa-IR",
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "IRR",
+        description:
+          "Free daily chat allowance; API keys billed per token in Toman.",
+      },
+      publisher: { "@id": "https://azuraai.ir/#organization" },
+    },
+  ],
 };
 
 function Logo() {
@@ -38,6 +128,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link
           href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800;900&display=swap"
           rel="stylesheet"
+        />
+        <link rel="alternate" href="https://azuraai.ir/llms.txt" type="text/plain" />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
         />
       </head>
       <body className="min-h-screen">

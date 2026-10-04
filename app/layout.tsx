@@ -24,14 +24,33 @@ const vazirmatn = Vazirmatn({
 })
 
 export const metadata: Metadata = {
+  // Required for any relative OG/Twitter URL (the manifest link above, and
+  // any future og image) to resolve to an absolute one. Without it the social
+  // card silently renders with no image.
+  metadataBase: new URL('https://app.azuraai.ir'),
   title: {
-    default: 'Azura - AI API Platform',
+    default: 'Azura — Persian AI assistant',
     template: '%s · Azura',
   },
   description:
-    'Production-grade AI API platform with AvalAI upstream provider, plus a mobile-first AI assistant app.',
+    'Azura is a Persian-first AI assistant: fast chat, deep reasoning, and web-grounded research with real citations. Free to use on the web and Android.',
   applicationName: 'Azura',
   manifest: '/manifest.webmanifest',
+  // Pages that must stay out of the index opt out individually (see /app and
+  // /auth). Everything else on this host is public and wants to be found.
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
+  },
+  keywords: [
+    'AI assistant',
+    'Persian AI',
+    'دستیار هوش مصنوعی',
+    'چت هوش مصنوعی',
+    'هوش مصنوعی فارسی',
+    'Azura',
+  ],
   appleWebApp: {
     capable: true,
     title: 'Azura',
@@ -46,11 +65,49 @@ export const metadata: Metadata = {
     apple: [{ url: '/brand/icons/apple-touch-icon.png', sizes: '180x180' }],
   },
   openGraph: {
-    title: 'Azura - AI API Platform',
-    description: 'Production-grade AI API platform with AvalAI upstream provider.',
-    siteName: 'Azura',
     type: 'website',
+    url: 'https://app.azuraai.ir/about',
+    title: 'Azura — Persian AI assistant',
+    description:
+      'Fast answers, deep thinking, and web-grounded research with citations. Built for Persian.',
+    siteName: 'Azura',
+    locale: 'en_US',
+    alternateLocale: ['fa_IR'],
+    images: [
+      {
+        url: '/brand/logo-mark.png',
+        width: 512,
+        height: 512,
+        alt: 'Azura',
+      },
+    ],
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Azura — Persian AI assistant',
+    description:
+      'Fast answers, deep thinking, and web-grounded research with citations.',
+    images: ['/brand/logo-mark.png'],
+  },
+}
+
+/**
+ * Organization-level structured data.
+ *
+ * The per-page JSON-LD in /about carries the richer SoftwareApplication
+ * graph. This one runs on every route so that a link shared from any screen
+ * still resolves to a known publisher rather than an anonymous URL. Static
+ * and author-controlled — no user input reaches this string.
+ */
+const organizationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'Azura',
+  alternateName: 'آزورا',
+  url: 'https://app.azuraai.ir',
+  logo: 'https://app.azuraai.ir/brand/logo-mark.png',
+  description:
+    'Azura builds a Persian-first AI assistant and an AI API platform.',
 }
 
 export const viewport: Viewport = {
@@ -89,6 +146,10 @@ export default function RootLayout({
             rendered inside a component never execute, so it lives in <head>
             next to themeInit. It no-ops outside the app shell. */}
         <script dangerouslySetInnerHTML={{ __html: localeInitScript }} />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+        />
       </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>{children}</ThemeProvider>
