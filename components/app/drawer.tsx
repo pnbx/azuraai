@@ -22,6 +22,7 @@ import {
 import type { Conversation } from './conversations'
 import { groupByRecency } from './conversations'
 import { useI18n, type I18nKey } from './i18n-provider'
+import { formatRelativeTime } from '@/lib/jalali'
 
 const spring = { type: 'spring' as const, stiffness: 380, damping: 32 }
 
@@ -35,17 +36,16 @@ const GROUP_LABEL_KEYS: Record<string, I18nKey> = {
   older: 'drawer.groupOlder',
 }
 
-/** Relative timestamp for rows — Today/Yesterday handled by group labels. */
-function relTime(ts: number): string {
-  const diff = Date.now() - ts
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return 'now'
-  if (m < 60) return `${m}m`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h`
-  const d = Math.floor(h / 24)
-  if (d < 7) return `${d}d`
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+/**
+ * Relative timestamp for rows.
+ *
+ * Previously hardcoded English abbreviations ("now", "2m", "3h", "2d") with
+ * Latin numerals regardless of locale, so a Persian drawer showed a Persian
+ * conversation list with English timestamps down the right-hand edge. Defers to
+ * the shared Jalali helpers, which also drops a redundant year.
+ */
+function relTime(ts: number, locale: 'fa' | 'en'): string {
+  return formatRelativeTime(ts, Date.now(), locale)
 }
 
 export interface DrawerProps {
@@ -98,7 +98,7 @@ function ConversationRow({
   const [menuOpen, setMenuOpen] = React.useState(false)
   const [confirmDelete, setConfirmDelete] = React.useState(false)
   const [renaming, setRenaming] = React.useState(false)
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const [draft, setDraft] = React.useState(conv.title)
 
   return (
@@ -147,7 +147,7 @@ function ConversationRow({
             {conv.title}
           </span>
           <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-            {relTime(conv.updatedAt)}
+            {relTime(conv.updatedAt, locale)}
           </span>
         </button>
       )}

@@ -303,6 +303,7 @@ export const STRINGS = {
   'sources.title': { fa: 'منابع', en: 'Sources' },
   'sources.count': { fa: '{n} منبع', en: '{n} sources' },
   'sources.close': { fa: 'بستن منابع', en: 'Close sources' },
+  'sources.openCitation': { fa: 'نمایش منبع', en: 'Show source' },
   'msg.reasoning': { fa: 'کمی فکر کرد · {n} حرف', en: 'Thought for a moment · {n} chars' },
   'thinking.liveChars': {
     fa: '{n} حرف استدلال · در حال نوشتن…',

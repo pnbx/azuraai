@@ -50,17 +50,33 @@ export function SourceRail({ sources }: { sources: Source[] }) {
 
 // ─── Sheet ───────────────────────────────────────────────────────────────────
 
-function SourcesSheet({
+export function SourcesSheet({
   sources,
   open,
   onClose,
+  focusIndex,
 }: {
   sources: Source[]
   open: boolean
   onClose: () => void
+  /**
+   * Zero-based row to reveal. Set when the reader taps a [n] chip in the
+   * answer, so the sheet opens already scrolled to the thing they asked about
+   * instead of dumping them at the top of a list of twelve.
+   */
+  focusIndex?: number
 }) {
   const { t } = useI18n()
   const panelRef = React.useRef<HTMLDivElement | null>(null)
+  const listRef = React.useRef<HTMLDivElement | null>(null)
+  const rowRefs = React.useRef<Array<HTMLAnchorElement | null>>([])
+
+  // Scroll the focused row into view after the sheet has actually mounted.
+  React.useEffect(() => {
+    if (!open || focusIndex === undefined) return
+    const row = rowRefs.current[focusIndex]
+    if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [open, focusIndex])
 
   // Escape closes, and the body behind the sheet stops scrolling. Both are
   // restored on unmount too, so a message removed mid-scroll cannot leave the
@@ -115,16 +131,24 @@ function SourcesSheet({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2">
+            <div ref={listRef} className="flex-1 overflow-y-auto p-2">
               {sources.map((s, i) => (
                 <a
                   key={`${s.url}-${i}`}
+                  ref={(el) => {
+                    rowRefs.current[i] = el
+                  }}
                   href={s.url}
                   onClick={(e) => {
                     e.preventDefault()
                     void openExternal(s.url)
                   }}
-                  className="flex gap-3 rounded-xl p-3 transition-colors hover:bg-muted"
+                  aria-current={focusIndex === i ? 'true' : undefined}
+                  className={`flex gap-3 rounded-xl p-3 transition-colors ${
+                    focusIndex === i
+                      ? 'bg-brand-soft ring-1 ring-brand-strong/40'
+                      : 'hover:bg-muted'
+                  }`}
                 >
                   <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-brand-soft text-[0.7rem] font-semibold text-brand-strong">
                     {i + 1}

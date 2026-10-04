@@ -27,25 +27,45 @@ import {
 import type { ChatMsg } from './conversations'
 import { Markdown } from './markdown'
 import { ReasoningText } from './thinking-panel'
-import { SourceRail } from './sources-sheet'
+import { SourceRail, SourcesSheet } from './sources-sheet'
 import { ResponseBadge } from './response-timer'
 import { MessageImages } from './attachments'
 import { AzuraMark, AzuraLogoAnimated } from '@/components/brand/logo'
 import { copyText, downloadTextFile, exportFilename } from './text-utils'
 import { haptic } from './haptics'
 import { useI18n } from './i18n-provider'
-import { translate, type Locale } from '@/lib/i18n'
+import type { Locale } from '@/lib/i18n'
+import { formatGregorianDate, formatRelativeTime } from '@/lib/jalali'
 
 const spring = { type: 'spring' as const, stiffness: 380, damping: 30 }
 
-/** Compact relative timestamp for message rows. */
+/**
+ * Compact relative timestamp for message rows.
+ *
+ * This used to hand back a bare "2m" / "3h" — Latin numerals and an English
+ * abbreviation — even when the whole interface was Persian, and fell back to a
+ * Gregorian date beyond a day. Both read as foreign to the audience the app is
+ * built for, so it now goes through the Jalali helpers: "۲ دقیقه پیش",
+ * "دیروز", "۳۰ خرداد".
+ *
+ * `now` is captured per render rather than read inside the helper, so the
+ * value cannot drift mid-render.
+ */
 function msgTime(ts?: number, locale: Locale = 'en'): string {
   if (!ts) return ''
-  const diff = Date.now() - ts
-  if (diff < 60_000) return translate(locale, 'msg.timeNow')
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`
-  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return formatRelativeTime(ts, Date.now(), locale)
+}
+
+/**
+ * Exact, unabbreviated timestamp for the tooltip behind the short label.
+ *
+ * Rendered in the reader's own calendar: a Persian reader gets a Jalali date,
+ * an English reader a Gregorian one. Forcing Jalali on everyone would be as
+ * wrong as the Gregorian default this replaced.
+ */
+function msgTimeFull(ts?: number, locale: Locale = 'en'): string {
+  if (!ts) return ''
+  return formatGregorianDate(ts, locale)
 }
 
 // ─── Brand avatar ────────────────────────────────────────────────────────────
@@ -219,6 +239,8 @@ export function AppChatMessage({
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState(message.content)
   const [copied, setCopied] = React.useState(false)
+  /** Which [n] citation chip is currently open in the sources sheet. */
+  const [citation, setCitation] = React.useState<number | null>(null)
   const { t, locale } = useI18n()
 
   const share = async () => {
@@ -291,7 +313,7 @@ export function AppChatMessage({
         {!editing && (
           <div className="mt-1 mr-1 flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover/msg:opacity-100">
             {msgTime(message.ts, locale) ? (
-              <span className="mr-1 text-[10px] tabular-nums text-muted-foreground" title={message.ts ? new Date(message.ts).toLocaleString() : undefined}>
+              <span className="mr-1 text-[10px] tabular-nums text-muted-foreground" title={msgTimeFull(message.ts, locale) || undefined}>
                 {msgTime(message.ts, locale)}
               </span>
             ) : null}
@@ -341,7 +363,11 @@ export function AppChatMessage({
 
           {message.content ? (
             <>
-              <Markdown text={message.content} />
+              <Markdown
+                text={message.content}
+                sourceCount={message.sources?.length ?? 0}
+                onCitation={setCitation}
+              />
               {isStreaming ? <span className="stream-caret" /> : null}
             </>
           ) : isStreaming ? (
@@ -354,6 +380,19 @@ export function AppChatMessage({
             <div className="mt-3 border-t border-border pt-3">
               <SourceRail sources={message.sources} />
             </div>
+          ) : null}
+
+          {/* Tapping a [n] chip in the answer opens the sources sheet already
+              scrolled to that entry. Kept out of SourceRail so tapping the
+              count chip still opens the sheet from the top, which is what
+              someone browsing the list expects. */}
+          {citation !== null && message.sources ? (
+            <SourcesSheet
+              sources={message.sources}
+              open
+              focusIndex={citation}
+              onClose={() => setCitation(null)}
+            />
           ) : null}
         </div>
 

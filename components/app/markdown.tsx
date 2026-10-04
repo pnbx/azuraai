@@ -22,17 +22,50 @@ import {
   isRtl,
   splitSegments,
   parseList,
+  toAsciiDigits,
+  isAllDigits,
   type ListNode,
 } from './markdown-parsers'
 import { useI18n } from './i18n-provider'
+import type { I18nKey } from '@/lib/i18n'
 import { renderMath, looksLikeMath } from '@/lib/math-render'
+
+// ─── Citation taps ──────────────────────────────────────────────────────────
+
+interface CitationApi {
+  /** Tap handler: receives a zero-based source index. */
+  onCitation: (index: number) => void
+  /** How many sources exist, so an out-of-range chip stays inert. */
+  count: number
+}
+
+/**
+ * Everything the block/inline renderers need beyond the text itself.
+ *
+ * Passed as an argument rather than read from React context because these
+ * helpers run inside `.map()` loops during a render, where a hook call would
+ * break the rules of hooks.
+ */
+interface RenderCtx {
+  citation: CitationApi | null
+  t: (key: I18nKey) => string
+}
 
 // ─── Inline formatting ───────────────────────────────────────────────────────
 
-function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+function renderInline(
+  text: string,
+  keyPrefix: string,
+  ctx: RenderCtx
+): React.ReactNode[] {
+  const { citation, t } = ctx
   const nodes: React.ReactNode[] = []
+  // Citation markers must accept Persian and Arabic-Indic digits, because the
+  // server's typography pass rewrites "[1]" to "[۱]" on the final frame.
+  // Matching ASCII digits only is what made every citation in a Persian answer
+  // render as inert text.
   const pattern =
-    /(\*\*\*[^*]+\*\*\*)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(`[^`]+`)|(\[[^\]]+\]\((https?:\/\/[^)\s]+)\))|(\[\d+\])|(~~[^~]+~~)|(==[^=]+==)|(\$\$[^$]+\$\$)|(\$[^$\n]+\$)/g
+    /(\*\*\*[^*]+\*\*\*)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(`[^`]+`)|(\[[^\]]+\]\((https?:\/\/[^)\s]+)\))|(\[[0-9\u0660-\u0669\u06F0-\u06F9]+\])|(~~[^~]+~~)|(==[^=]+==)|(\$\$[^$]+\$\$)|(\$[^$\n]+\$)/g
   let last = 0
   let m: RegExpExecArray | null
   let i = 0
@@ -82,14 +115,36 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
           {label}
         </a>
       )
-    } else if (/^\[\d+\]$/.test(token)) {
+    } else if (/^\[[0-9\u0660-\u0669\u06F0-\u06F9]+\]$/.test(token)) {
+      const inner = token.slice(1, -1)
+      // The chip shows the marker exactly as the model wrote it (so a Persian
+      // answer reads [۱], not a jarring [1]) while the tap target is resolved
+      // from the ASCII form.
+      const n = isAllDigits(inner) ? Number(toAsciiDigits(inner)) : 0
+      // Only a citation that actually points somewhere becomes tappable. A
+      // model routinely cites [11] when it returned eight sources, and a live
+      // button that opens an empty slot is worse than a static chip.
+      const tappable = citation && n >= 1 && n <= citation.count
       nodes.push(
-        <sup
-          key={key}
-          className="ml-0.5 rounded bg-brand-soft px-1 text-[0.7em] font-semibold text-brand-strong"
-        >
-          {token.slice(1, -1)}
-        </sup>
+        tappable ? (
+          <sup key={key} className="ml-0.5 align-super">
+            <button
+              type="button"
+              onClick={() => citation.onCitation(n - 1)}
+              className="rounded bg-brand-soft px-1 text-[0.7em] font-semibold text-brand-strong underline-offset-2 transition-colors hover:bg-brand-strong hover:text-brand-soft"
+              aria-label={`${t('sources.openCitation')} ${n}`}
+            >
+              {inner}
+            </button>
+          </sup>
+        ) : (
+          <sup
+            key={key}
+            className="ml-0.5 rounded bg-brand-soft px-1 text-[0.7em] font-semibold text-brand-strong"
+          >
+            {inner}
+          </sup>
+        )
       )
     } else if (token.startsWith('*')) {
       nodes.push(
@@ -215,7 +270,7 @@ function CodeBlock({ code, lang, live }: { code: string; lang?: string; live?: b
 
 // ─── Block parsing ───────────────────────────────────────────────────────────
 
-function renderList(nodes: ListNode[], keyPrefix: string): React.ReactNode {
+function renderList(nodes: ListNode[], keyPrefix: string, ctx: RenderCtx): React.ReactNode {
   const Tag = nodes.some((n) => n.ordered) ? 'ol' : 'ul'
   return (
     <Tag key={keyPrefix} dir="auto" className={Tag === 'ol' ? 'md-ol' : 'md-ul'}>
@@ -229,15 +284,23 @@ function renderList(nodes: ListNode[], keyPrefix: string): React.ReactNode {
               {n.checked ? '✓' : ''}
             </span>
           )}
-          <span className="md-li-body">{renderInline(n.text, `${keyPrefix}-${i}`)}</span>
-          {n.children && n.children.length > 0 && renderList(n.children, `${keyPrefix}-${i}-c`)}
+          <span className="md-li-body">{renderInline(n.text, `${keyPrefix}-${i}`, ctx)}</span>
+          {n.children && n.children.length > 0 && renderList(n.children, `${keyPrefix}-${i}-c`, ctx)}
         </li>
       ))}
     </Tag>
   )
 }
 
-function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
+function TextBlocks({
+  text,
+  keyPrefix,
+  ctx,
+}: {
+  text: string
+  keyPrefix: string
+  ctx: RenderCtx
+}) {
   const blocks = text.split(/\n{2,}/)
   return (
     <>
@@ -264,8 +327,10 @@ function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
           const rest = trimmed.slice(heading[0].length).replace(/^\n+/, '')
           return (
             <React.Fragment key={key}>
-              <Tag dir={dir}>{renderInline(heading[2].trim(), key)}</Tag>
-              {rest.trim() ? <TextBlocks text={rest} keyPrefix={`${key}-r`} /> : null}
+              <Tag dir={dir}>{renderInline(heading[2].trim(), key, ctx)}</Tag>
+              {rest.trim() ? (
+                <TextBlocks text={rest} keyPrefix={`${key}-r`} ctx={ctx} />
+              ) : null}
             </React.Fragment>
           )
         }
@@ -281,7 +346,7 @@ function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
                 .split('\n')
                 .map((l) => l.replace(/^>\s?/, ''))
                 .map((l, li) => (
-                  <p key={li}>{renderInline(l, `${key}-${li}`)}</p>
+                  <p key={li}>{renderInline(l, `${key}-${li}`, ctx)}</p>
                 ))}
             </blockquote>
           )
@@ -307,7 +372,7 @@ function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
                   <thead>
                     <tr>
                       {headers.map((h, hi) => (
-                        <th key={hi}>{renderInline(h, `${key}-h-${hi}`)}</th>
+                        <th key={hi}>{renderInline(h, `${key}-h-${hi}`, ctx)}</th>
                       ))}
                     </tr>
                   </thead>
@@ -315,7 +380,7 @@ function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
                     {rows.map((row, ri) => (
                       <tr key={ri}>
                         {norm(row).map((cell, ci) => (
-                          <td key={ci}>{renderInline(cell, `${key}-${ri}-${ci}`)}</td>
+                          <td key={ci}>{renderInline(cell, `${key}-${ri}-${ci}`, ctx)}</td>
                         ))}
                       </tr>
                     ))}
@@ -329,14 +394,14 @@ function TextBlocks({ text, keyPrefix }: { text: string; keyPrefix: string }) {
         // Lists — supports nesting by indentation, plus GFM task lists
         const lines = trimmed.split('\n')
         const list = parseList(lines)
-        if (list) return renderList(list, key)
+        if (list) return renderList(list, key, ctx)
 
         // Paragraph
         return (
           <p key={key} dir={dir} className="whitespace-pre-wrap">
             {lines.map((line, li) => (
               <span key={li}>
-                {renderInline(line, `${key}-${li}`)}
+                {renderInline(line, `${key}-${li}`, ctx)}
                 {li < lines.length - 1 && <br />}
               </span>
             ))}
@@ -373,8 +438,27 @@ function MathBlock({ latex }: { latex: string }) {
   )
 }
 
-export function Markdown({ text, className = '' }: { text: string; className?: string }) {
+export function Markdown({
+  text,
+  className = '',
+  sourceCount = 0,
+  onCitation,
+}: {
+  text: string
+  className?: string
+  /** Number of attached sources; gates whether a [n] chip is tappable. */
+  sourceCount?: number
+  /** Called with a zero-based index when a citation chip is tapped. */
+  onCitation?: (index: number) => void
+}) {
   const segments = React.useMemo(() => splitSegments(text), [text])
+  const { t } = useI18n()
+
+  const citation = React.useMemo<CitationApi | null>(
+    () => (onCitation && sourceCount > 0 ? { onCitation, count: sourceCount } : null),
+    [onCitation, sourceCount]
+  )
+  const ctx = React.useMemo<RenderCtx>(() => ({ citation, t }), [citation, t])
 
   return (
     <div className={`md-body ${className}`}>
@@ -384,7 +468,7 @@ export function Markdown({ text, className = '' }: { text: string; className?: s
         ) : seg.math !== undefined ? (
           <MathBlock key={si} latex={seg.math} />
         ) : (
-          <TextBlocks key={si} text={seg.text} keyPrefix={`s${si}`} />
+          <TextBlocks key={si} text={seg.text} keyPrefix={`s${si}`} ctx={ctx} />
         )
       )}
     </div>

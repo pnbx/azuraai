@@ -28,6 +28,35 @@ export function isRtl(text: string): boolean {
   return rtl > latin
 }
 
+/**
+ * Arabic-Indic (Persian/Urdu) and Extended Arabic-Indic digit ranges.
+ */
+const DIGIT_RANGES = /[\u0660-\u0669\u06F0-\u06F9]/g
+
+/**
+ * Normalise Persian/Arabic-Indic digits back to ASCII.
+ *
+ * Necessary because the server applies a typography pass to the authoritative
+ * final frame that rewrites every numeral in the answer — including the digits
+ * inside citation markers. A research reply citing "[1]" arrives as "[۱]",
+ * so anything matching citations on ASCII digits alone silently matches
+ * nothing, and every citation in every Persian answer renders as dead text
+ * instead of a chip. Stripping the digits back out makes the marker legible to
+ * the parser while leaving the surrounding prose untouched.
+ */
+export function toAsciiDigits(text: string): string {
+  return text.replace(DIGIT_RANGES, (ch) => {
+    const code = ch.codePointAt(0)!
+    const base = code >= 0x06f0 ? 0x06f0 : 0x0660
+    return String(code - base)
+  })
+}
+
+/** True when every character in `text` is a digit in any of the ranges above. */
+export function isAllDigits(text: string): boolean {
+  return text.length > 0 && /^[0-9\u0660-\u0669\u06F0-\u06F9]+$/.test(text)
+}
+
 export interface Segment {
   text: string
   fence?: { lang: string; code: string; live: boolean }
