@@ -122,6 +122,16 @@ export const STRINGS = {
   },
   'chat.startDictation': { fa: 'شروع تایپ صوتی', en: 'Start dictation' },
   'chat.stopDictation': { fa: 'توقف تایپ صوتی', en: 'Stop dictation' },
+  'chat.dictationDenied': {
+    fa: 'دسترسی به میکروفون داده نشد. از تنظیمات مرورگر اجازه بده.',
+    en: 'Microphone access was denied. Allow it in your browser settings.',
+  },
+  'chat.dictationNetwork': {
+    fa: 'تایپ صوتی به اینترنت نیاز دارد و اتصال برقرار نشد.',
+    en: 'Dictation needs a connection, and it dropped. Try again.',
+  },
+  'chat.dictationNoSpeech': { fa: 'صدایی شنیده نشد.', en: 'Nothing was heard.' },
+  'chat.dictationFailed': { fa: 'تایپ صوتی ناموفق بود.', en: 'Dictation failed.' },
   'chat.listening': { fa: 'در حال گوش دادن…', en: 'Listening…' },
   'chat.voice': { fa: 'تایپ با صدا', en: 'Voice input' },
   'chat.attach': { fa: 'پیوست عکس', en: 'Attach image' },

@@ -22,6 +22,23 @@ describe('normaliseVoiceError', () => {
     expect(normaliseVoiceError('something-new')).toBe('unknown')
     expect(normaliseVoiceError(undefined)).toBe('unknown')
   })
+
+  it('gives every failure code a user-facing message', () => {
+    // The composer maps these to toasts; an unmapped code would leave the user
+    // staring at a dead mic with no explanation.
+    const MESSAGES = {
+      'not-allowed': 'chat.dictationDenied',
+      network: 'chat.dictationNetwork',
+      'no-speech': 'chat.dictationNoSpeech',
+      aborted: 'chat.dictationFailed',
+      unknown: 'chat.dictationFailed',
+    } as const
+
+    for (const code of ['not-allowed', 'network', 'no-speech', 'aborted', 'unknown'] as const) {
+      expect(normaliseVoiceError(code)).toBe(code)
+      expect(MESSAGES[code]).toBeTruthy()
+    }
+  })
 })
 
 describe('chunkForSpeech', () => {

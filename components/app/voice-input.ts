@@ -69,7 +69,13 @@ export function normaliseVoiceError(code?: string): VoiceError {
 export function useVoiceInput(
   onText: (text: string, isFinal: boolean) => void,
   /** BCP-47 tag for the recogniser, e.g. `fa-IR`. Defaults to the device locale. */
-  lang?: string
+  lang?: string,
+  /**
+   * Called once per failed attempt, at the moment it fails. Reporting from
+   * here rather than watching `error` from an effect keeps callers from
+   * setState-ing synchronously inside an effect on every failure.
+   */
+  onError?: (error: VoiceError) => void
 ): VoiceInputApi {
   const [listening, setListening] = useState(false)
   const [error, setError] = useState<VoiceError | null>(null)
@@ -85,11 +91,13 @@ export function useVoiceInput(
   }, [])
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const onTextRef = useRef(onText)
+  const onErrorRef = useRef(onError)
 
-  // Keep the callback ref current without touching it during render.
+  // Keep the callback refs current without touching them during render.
   useEffect(() => {
     onTextRef.current = onText
-  }, [onText])
+    onErrorRef.current = onError
+  }, [onText, onError])
 
   useEffect(() => {
     const w = window as unknown as Record<string, unknown>
@@ -121,7 +129,9 @@ export function useVoiceInput(
       // `aborted` is what a deliberate stop() looks like, so it is not a
       // failure worth surfacing to the user.
       const code = normaliseVoiceError(e?.error)
-      if (code !== 'aborted') setError(code)
+      if (code === 'aborted') return
+      setError(code)
+      onErrorRef.current?.(code)
     }
 
     recognitionRef.current = rec

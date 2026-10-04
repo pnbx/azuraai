@@ -59,7 +59,17 @@ import {
   downloadTextFile,
   exportFilename,
 } from './text-utils'
-import { useI18n } from './i18n-provider'
+import { useI18n, type I18nKey } from './i18n-provider'
+import type { VoiceError } from './voice-input'
+
+/** Which toast explains each dictation failure. */
+const DICTATION_ERROR_MESSAGE: Record<VoiceError, I18nKey> = {
+  'not-allowed': 'chat.dictationDenied',
+  network: 'chat.dictationNetwork',
+  'no-speech': 'chat.dictationNoSpeech',
+  aborted: 'chat.dictationFailed',
+  unknown: 'chat.dictationFailed',
+}
 
 const spring = { type: 'spring' as const, stiffness: 380, damping: 30 }
 
@@ -317,7 +327,12 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
     },
     // Pin the recogniser to Persian: on an English-locale device the default
     // transcribes Persian speech with English phonetics and returns nonsense.
-    'fa-IR'
+    'fa-IR',
+    // Dictation fails silently otherwise: the mic stops and the composer just
+    // sits there, indistinguishable from the user deciding they were done.
+    // Reporting at the source also keeps this out of an effect, which would
+    // setState synchronously and cascade a render on every failure.
+    (err) => flash(t(DICTATION_ERROR_MESSAGE[err]))
   )
 
   // ── Draft restore ───────────────────────────────────────────────────────
