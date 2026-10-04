@@ -22,8 +22,17 @@ const securityHeaders = [
     value: "strict-origin-when-cross-origin",
   },
   {
+    // The microphone must be allowed for this origin or every capture path is
+    // dead on arrival: getUserMedia/MediaRecorder resolves null and
+    // navigator.permissions reports "denied" regardless of what the user
+    // chose in their own prompt. Voice conversation needs a live audio
+    // stream, not just a push-to-talk button.
+    //
+    // `self` keeps the grant scoped to our own frames, so a third-party
+    // embed on the marketing site still cannot reach the mic. Camera and
+    // geolocation stay fully denied — nothing uses them.
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=()",
+    value: "camera=(), geolocation=(), microphone=(self)",
   },
   {
     key: "X-XSS-Protection",

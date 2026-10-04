@@ -6,6 +6,16 @@
  * Chrome/Android WebView expose `webkitSpeechRecognition`; where unsupported
  * the hook reports `supported: false` and the mic button simply doesn't
  * render. Auto-stops after a pause; appends (not replaces) to the composer.
+ *
+ * Language note: the recogniser defaults to `navigator.language`, which on an
+ * English-locale device transcribes Persian speech with English phonetics and
+ * produces garbage. `lang` is therefore overridable so the caller can pin
+ * `fa-IR`; that is what makes Persian dictation actually work.
+ *
+ * Two failures dominate in practice and are handled explicitly below:
+ * `not-allowed` (permission refused or blocked by Permissions-Policy, which
+ * is indistinguishable from the browser's own denial) and `network`
+ * (Chrome's recogniser is a cloud service and fails offline).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -14,6 +24,7 @@ type SpeechRecognitionLike = {
   lang: string
   continuous: boolean
   interimResults: boolean
+  maxAlternatives: number
   onresult: ((e: SpeechEventLike) => void) | null
   onend: (() => void) | null
   onerror: ((e: { error?: string }) => void) | null
@@ -26,8 +37,42 @@ interface SpeechEventLike {
   results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>
 }
 
-export function useVoiceInput(onText: (text: string, isFinal: boolean) => void) {
+/** Why dictation stopped, when it wasn't a clean stop. */
+export type VoiceError = 'not-allowed' | 'network' | 'no-speech' | 'aborted' | 'unknown'
+
+export interface VoiceInputApi {
+  listening: boolean
+  supported: boolean
+  /** Set when the last attempt failed; cleared on the next successful start. */
+  error: VoiceError | null
+  start: () => void
+  stop: () => void
+}
+
+/** Maps a Web Speech error string onto something we can act on. */
+export function normaliseVoiceError(code?: string): VoiceError {
+  switch (code) {
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return 'not-allowed'
+    case 'network':
+      return 'network'
+    case 'no-speech':
+      return 'no-speech'
+    case 'aborted':
+      return 'aborted'
+    default:
+      return 'unknown'
+  }
+}
+
+export function useVoiceInput(
+  onText: (text: string, isFinal: boolean) => void,
+  /** BCP-47 tag for the recogniser, e.g. `fa-IR`. Defaults to the device locale. */
+  lang?: string
+): VoiceInputApi {
   const [listening, setListening] = useState(false)
+  const [error, setError] = useState<VoiceError | null>(null)
   // Feature detection must start as false on BOTH sides of hydration: a
   // useState(() => window…) initializer returns true on the client and false
   // on the server, which made React throw a hydration mismatch and regenerate
@@ -54,9 +99,10 @@ export function useVoiceInput(onText: (text: string, isFinal: boolean) => void) 
     if (!Ctor) return
 
     const rec = new Ctor()
-    rec.lang = navigator.language || 'en-US'
+    rec.lang = lang || navigator.language || 'en-US'
     rec.continuous = true
     rec.interimResults = true
+    rec.maxAlternatives = 1
 
     rec.onresult = (e) => {
       let interim = ''
@@ -70,7 +116,13 @@ export function useVoiceInput(onText: (text: string, isFinal: boolean) => void) 
       else if (interim) onTextRef.current(interim, false)
     }
     rec.onend = () => setListening(false)
-    rec.onerror = () => setListening(false)
+    rec.onerror = (e) => {
+      setListening(false)
+      // `aborted` is what a deliberate stop() looks like, so it is not a
+      // failure worth surfacing to the user.
+      const code = normaliseVoiceError(e?.error)
+      if (code !== 'aborted') setError(code)
+    }
 
     recognitionRef.current = rec
     return () => {
@@ -80,13 +132,14 @@ export function useVoiceInput(onText: (text: string, isFinal: boolean) => void) 
         // already stopped
       }
     }
-  }, [])
+  }, [lang])
 
   const start = useCallback(() => {
     const rec = recognitionRef.current
     if (!rec || listening) return
     try {
       rec.start()
+      setError(null)
       setListening(true)
     } catch {
       // start() throws if already started — ignore
@@ -102,5 +155,5 @@ export function useVoiceInput(onText: (text: string, isFinal: boolean) => void) 
     setListening(false)
   }, [])
 
-  return { listening, supported, start, stop }
+  return { listening, supported, error, start, stop }
 }

@@ -309,11 +309,16 @@ export function AppChatScreen({ authed = true }: { authed?: boolean }) {
     flash('Saved as Markdown')
   }, [activeId, conversations, messages, flash])
 
-  const voice = useVoiceInput((text, isFinal) => {
-    if (!isFinal) return
-    const prev = textareaRef.current?.value ?? ''
-    setComposerText(prev ? `${prev} ${text}`.trim() : text)
-  })
+  const voice = useVoiceInput(
+    (text, isFinal) => {
+      if (!isFinal) return
+      const prev = textareaRef.current?.value ?? ''
+      setComposerText(prev ? `${prev} ${text}`.trim() : text)
+    },
+    // Pin the recogniser to Persian: on an English-locale device the default
+    // transcribes Persian speech with English phonetics and returns nonsense.
+    'fa-IR'
+  )
 
   // ── Draft restore ───────────────────────────────────────────────────────
   // Runs after the first paint so the textarea element exists. Deferred into
